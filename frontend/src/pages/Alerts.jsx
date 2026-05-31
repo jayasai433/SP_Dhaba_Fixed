@@ -12,7 +12,7 @@ export default function Alerts() {
   const [alerts, setAlerts] = useState(null);
 
   useEffect(() => {
-    const load = () => api.get("/alerts").then(({ data }) => setAlerts(data));
+    const load = () => api.get("/alerts").then(({ data }) => setAlerts(data)).catch(() => {});
     load();
     const t = setInterval(load, 60000);
     return () => clearInterval(t);

@@ -22,7 +22,7 @@ export default function LiveStock() {
   const [cat, setCat] = useState("all");
   const [status, setStatus] = useState("all");
 
-  const load = useCallback(() => api.get("/stock").then(({ data }) => setStock(data)), []);
+  const load = useCallback(() => api.get("/stock").then(({ data }) => setStock(data)).catch(() => {}), []);
   useEffect(() => { load(); const t = setInterval(load, 60000); return () => clearInterval(t); }, [load]);
 
   const categories = useMemo(() => {

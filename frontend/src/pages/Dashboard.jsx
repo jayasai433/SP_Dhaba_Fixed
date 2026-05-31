@@ -45,8 +45,12 @@ function KPI({ icon: Icon, label, value, hint, color = "orange", testid }) {
 export default function Dashboard() {
   const [data, setData] = useState(null);
   useEffect(() => {
-    api.get("/dashboard").then(({ data }) => setData(data));
-    const t = setInterval(() => api.get("/dashboard").then(({ data }) => setData(data)), 60000);
+    const fetchDashboard = () =>
+      api.get("/dashboard")
+        .then(({ data }) => setData(data))
+        .catch(() => {});
+    fetchDashboard();
+    const t = setInterval(fetchDashboard, 60000);
     return () => clearInterval(t);
   }, []);
 
