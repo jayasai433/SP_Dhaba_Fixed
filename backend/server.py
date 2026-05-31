@@ -542,7 +542,7 @@ async def list_purchases(start: Optional[str] = None, end: Optional[str] = None,
         d["item_name"] = it.get("name", "Unknown")
         d["category"] = it.get("category", "")
         d["unit"] = it.get("unit", "")
-    return docss
+    return docs
 
 @api.post("/purchases")
 async def create_purchase(payload: PurchaseIn, user=Depends(require_roles("admin", "staff"))):
@@ -684,6 +684,8 @@ class VoidIn(BaseModel):
 
 @api.patch("/purchases/{purchase_id}/void")
 async def void_purchase(purchase_id: str, payload: VoidIn, user=Depends(get_current_user)):
+    if user["role"] == "viewer":
+        raise HTTPException(status_code=403, detail="Forbidden: insufficient role")
     doc = await db.purchases.find_one({"id": purchase_id})
     if not doc:
         raise HTTPException(404, "Purchase not found")
@@ -726,6 +728,8 @@ async def void_usage(usage_id: str, payload: VoidIn, user=Depends(get_current_us
 
 @api.patch("/expenses/{expense_id}/void")
 async def void_expense(expense_id: str, payload: VoidIn, user=Depends(get_current_user)):
+    if user["role"] == "viewer":
+        raise HTTPException(status_code=403, detail="Forbidden: insufficient role")
     doc = await db.expenses.find_one({"id": expense_id})
     if not doc:
         raise HTTPException(404, "Expense not found")
@@ -767,7 +771,7 @@ async def get_stock(user=Depends(get_current_user)):
         reorder = float(it.get("reorder_level", 0))
         if left <= 0:
             stat = "out"
-        elif left < reorder:
+        elif left <= reorder:
             stat = "low"
         else:
             stat = "in"
