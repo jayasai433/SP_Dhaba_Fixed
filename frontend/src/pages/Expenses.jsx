@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import api, { formatApiError } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -23,14 +23,14 @@ export default function Expenses() {
   const [end, setEnd] = useState("");
 
   useEffect(() => { api.get("/expense-categories").then(({ data }) => setCats(data)); }, []);
-  const load = () => {
+  const load = useCallback(() => {
     const q = {};
     if (filterCat !== "all") q.category = filterCat;
     if (start) q.start = start;
     if (end) q.end = end;
     api.get("/expenses", { params: q }).then(({ data }) => setRows(data));
-  };
-  useEffect(() => { load(); }, [filterCat, start, end]);
+  }, [filterCat, start, end]);
+  useEffect(() => { load(); }, [load]);
 
   const submit = async (e) => {
     e.preventDefault();

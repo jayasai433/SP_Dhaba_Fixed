@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import api, { formatApiError } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -25,8 +25,8 @@ export default function DailyUsage() {
     });
   }, []);
 
-  const load = () => { api.get("/usage").then(({ data }) => setRows(data)); };
-  useEffect(() => { load(); }, []);
+  const load = useCallback(() => { api.get("/usage").then(({ data }) => setRows(data)); }, []);
+  useEffect(() => { load(); }, [load]);
 
   const addRow = () => setEntries((e) => [...e, { rid: crypto.randomUUID(), item_id: "", qty: "", notes: "" }]);
   const removeRow = (rid) => setEntries((e) => e.filter((r) => r.rid !== rid));

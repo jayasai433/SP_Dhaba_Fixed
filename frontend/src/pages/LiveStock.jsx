@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { Link } from "react-router-dom";
 import api from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
@@ -22,8 +22,8 @@ export default function LiveStock() {
   const [cat, setCat] = useState("all");
   const [status, setStatus] = useState("all");
 
-  const load = () => api.get("/stock").then(({ data }) => setStock(data));
-  useEffect(() => { load(); const t = setInterval(load, 60000); return () => clearInterval(t); }, []);
+  const load = useCallback(() => api.get("/stock").then(({ data }) => setStock(data)), []);
+  useEffect(() => { load(); const t = setInterval(load, 60000); return () => clearInterval(t); }, [load]);
 
   const categories = useMemo(() => {
     if (!stock) return [];

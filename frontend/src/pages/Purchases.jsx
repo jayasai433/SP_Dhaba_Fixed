@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import api, { formatApiError } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
@@ -29,14 +29,14 @@ export default function Purchases() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => { api.get("/items").then(({ data }) => setItems(data)); }, []);
-  const load = () => {
+  const load = useCallback(() => {
     const q = {};
     if (filterItem !== "all") q.item_id = filterItem;
     if (start) q.start = start;
     if (end) q.end = end;
     api.get("/purchases", { params: q }).then(({ data }) => setRows(data));
-  };
-  useEffect(() => { load(); }, [filterItem, start, end]);
+  }, [filterItem, start, end]);
+  useEffect(() => { load(); }, [load]);
 
   const selectedItem = items.find((i) => i.id === itemId);
   const total = (parseFloat(qty || 0) * parseFloat(price || 0)) || 0;

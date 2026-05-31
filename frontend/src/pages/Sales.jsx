@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import api, { formatApiError } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -20,8 +20,8 @@ export default function Sales() {
   const [saving, setSaving] = useState(false);
   const [duplicate, setDuplicate] = useState(null);
 
-  const load = () => { api.get("/sales").then(({ data }) => setRows(data)); };
-  useEffect(() => { load(); }, []);
+  const load = useCallback(() => { api.get("/sales").then(({ data }) => setRows(data)); }, []);
+  useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
     if (!date) return setDuplicate(null);

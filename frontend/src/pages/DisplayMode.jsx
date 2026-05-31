@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import api from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { inr, fmtDate, todayIST } from "@/lib/format";
@@ -18,7 +18,7 @@ export default function DisplayMode() {
   const [alerts, setAlerts] = useState([]);
   const [now, setNow] = useState(new Date());
 
-  const load = async () => {
+  const load = useCallback(async () => {
     const [s, d, a] = await Promise.all([
       api.get("/stock").then((r) => r.data),
       api.get("/sales/check/" + todayIST()).then((r) => r.data),
@@ -27,14 +27,14 @@ export default function DisplayMode() {
     setStock(s.filter((x) => x.is_active));
     setToday(d.entry?.total_amount || 0);
     setAlerts(a);
-  };
+  }, []);
 
   useEffect(() => {
     load();
     const t1 = setInterval(load, 60000);
     const t2 = setInterval(() => setNow(new Date()), 1000);
     return () => { clearInterval(t1); clearInterval(t2); };
-  }, []);
+  }, [load]);
 
   const fullscreen = () => {
     if (document.fullscreenElement) document.exitFullscreen();
