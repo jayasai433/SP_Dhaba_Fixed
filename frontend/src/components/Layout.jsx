@@ -1,0 +1,178 @@
+import { useState, useEffect } from "react";
+import { Link, useLocation, Outlet } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
+import api from "@/lib/api";
+import { cn } from "@/lib/utils";
+import {
+  LayoutDashboard, Package, ShoppingCart, ChefHat, IndianRupee,
+  Boxes, BellRing, Settings, LogOut, Tv, Menu, X
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+
+const NAV = [
+  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["admin", "viewer"] },
+  { to: "/stock", label: "Live Stock", icon: Boxes, roles: ["admin", "staff", "viewer"] },
+  { to: "/alerts", label: "Alerts", icon: BellRing, roles: ["admin", "staff", "viewer"], badge: true },
+  { to: "/purchases", label: "Purchases", icon: ShoppingCart, roles: ["admin", "staff"] },
+  { to: "/usage", label: "Daily Usage", icon: ChefHat, roles: ["admin", "staff"] },
+  { to: "/sales", label: "Sales", icon: IndianRupee, roles: ["admin", "staff"] },
+  { to: "/items", label: "Item Master", icon: Package, roles: ["admin"] },
+  { to: "/display", label: "Display Mode", icon: Tv, roles: ["viewer", "admin"] },
+  { to: "/settings", label: "Settings", icon: Settings, roles: ["admin"] },
+];
+
+const MOBILE_NAV_BY_ROLE = {
+  admin: ["/dashboard", "/stock", "/purchases", "/usage", "/sales"],
+  staff: ["/stock", "/purchases", "/usage", "/sales", "/alerts"],
+  viewer: ["/dashboard", "/stock", "/alerts", "/display"],
+};
+
+export default function Layout() {
+  const { user, logout } = useAuth();
+  const loc = useLocation();
+  const [profile, setProfile] = useState({ name: "SP Royal Punjabi Dhaba", logo_base64: "" });
+  const [alertsCount, setAlertsCount] = useState(0);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  useEffect(() => {
+    api.get("/business-profile").then(({ data }) => data && setProfile(data)).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const fetchAlerts = () => api.get("/alerts")
+      .then(({ data }) => setAlertsCount(data.length))
+      .catch(() => {});
+    fetchAlerts();
+    const t = setInterval(fetchAlerts, 60000);
+    return () => clearInterval(t);
+  }, [loc.pathname]);
+
+  useEffect(() => { setDrawerOpen(false); }, [loc.pathname]);
+
+  const visibleNav = NAV.filter((n) => n.roles.includes(user.role));
+  const mobileNavRoutes = MOBILE_NAV_BY_ROLE[user.role] || [];
+  const mobileNav = visibleNav.filter((n) => mobileNavRoutes.includes(n.to)).slice(0, 5);
+
+  const SidebarContent = (
+    <>
+      <div className="flex items-center gap-3 px-2 mb-6">
+        <div className="h-10 w-10 rounded-xl bg-orange-600 flex items-center justify-center text-white font-bold font-display shadow-lg shadow-orange-900/40">
+          {profile.logo_base64 ? (
+            <img src={profile.logo_base64} alt="logo" className="h-10 w-10 rounded-xl object-cover" />
+          ) : "SP"}
+        </div>
+        <div className="leading-tight">
+          <div className="font-display font-semibold text-white text-sm" data-testid="business-name">{profile.name}</div>
+          <div className="text-[11px] text-orange-200/60">Operations Manager</div>
+        </div>
+      </div>
+      <nav className="flex-1 flex flex-col gap-1">
+        {visibleNav.map((n) => {
+          const active = loc.pathname.startsWith(n.to);
+          const Icon = n.icon;
+          return (
+            <Link
+              key={n.to}
+              to={n.to}
+              data-testid={`sidebar-link-${n.to.slice(1)}`}
+              className={cn(
+                "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all",
+                active
+                  ? "bg-orange-600 text-white shadow-md shadow-orange-900/30"
+                  : "text-orange-100/80 hover:bg-white/5"
+              )}
+            >
+              <Icon size={18} />
+              <span className="flex-1">{n.label}</span>
+              {n.badge && alertsCount > 0 && (
+                <Badge data-testid="sidebar-alerts-badge" className="bg-red-600 hover:bg-red-600 text-white">{alertsCount}</Badge>
+              )}
+            </Link>
+          );
+        })}
+      </nav>
+      <div className="mt-4 pt-4 border-t border-white/10">
+        <div className="px-3 py-2 text-xs text-orange-200/70">
+          <div className="font-medium text-white" data-testid="current-user-name">{user.name}</div>
+          <div className="uppercase tracking-wider text-[10px] mt-0.5">{user.role}</div>
+        </div>
+        <Button
+          variant="ghost"
+          onClick={logout}
+          data-testid="logout-button"
+          className="w-full justify-start text-orange-100 hover:bg-white/10 hover:text-white rounded-xl"
+        >
+          <LogOut size={16} className="mr-2" />Logout
+        </Button>
+      </div>
+    </>
+  );
+
+  return (
+    <div className="min-h-screen flex bg-[#FFF8F0]" data-testid="app-shell">
+      {/* Desktop sidebar */}
+      <aside className="hidden md:flex flex-col w-64 h-screen sticky top-0 bg-[#2D1606] p-4 z-40">
+        {SidebarContent}
+      </aside>
+
+      {/* Mobile drawer */}
+      {drawerOpen && (
+        <div className="md:hidden fixed inset-0 z-50 flex">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setDrawerOpen(false)} />
+          <aside className="relative w-72 bg-[#2D1606] p-4 flex flex-col animate-fade-up">
+            <button onClick={() => setDrawerOpen(false)} className="absolute top-3 right-3 text-white p-2" data-testid="close-drawer">
+              <X size={20} />
+            </button>
+            {SidebarContent}
+          </aside>
+        </div>
+      )}
+
+      {/* Main */}
+      <main className="flex-1 min-w-0 flex flex-col">
+        {/* Mobile top bar */}
+        <header className="md:hidden sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-orange-900/10 px-4 h-14 flex items-center justify-between">
+          <button onClick={() => setDrawerOpen(true)} data-testid="open-drawer" className="p-2 -ml-2 text-slate-700">
+            <Menu size={22} />
+          </button>
+          <div className="font-display font-semibold text-slate-900 text-sm truncate">{profile.name}</div>
+          <div className="w-8 h-8 rounded-full bg-orange-100 text-orange-700 text-xs font-semibold flex items-center justify-center">
+            {user.name?.[0]?.toUpperCase()}
+          </div>
+        </header>
+
+        <div className="flex-1 px-4 py-6 pb-24 md:p-8 max-w-[1400px] w-full mx-auto">
+          <Outlet />
+        </div>
+
+        {/* Mobile bottom nav */}
+        <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur-xl border-t border-orange-900/10 h-16 flex items-center justify-around px-2">
+          {mobileNav.map((n) => {
+            const active = loc.pathname.startsWith(n.to);
+            const Icon = n.icon;
+            return (
+              <Link
+                key={n.to}
+                to={n.to}
+                data-testid={`bottom-nav-${n.to.slice(1)}`}
+                className={cn(
+                  "relative flex flex-col items-center justify-center min-w-[56px] py-1 rounded-xl transition-all",
+                  active ? "text-orange-600" : "text-slate-500"
+                )}
+              >
+                <Icon size={20} />
+                <span className="text-[10px] mt-0.5 font-medium">{n.label}</span>
+                {n.badge && alertsCount > 0 && (
+                  <span className="absolute top-0 right-2 h-4 min-w-[16px] px-1 text-[10px] rounded-full bg-red-600 text-white flex items-center justify-center">
+                    {alertsCount}
+                  </span>
+                )}
+              </Link>
+            );
+          })}
+        </nav>
+      </main>
+    </div>
+  );
+}

@@ -1,0 +1,37 @@
+{
+  "summary": "First full-stack test run for SP Royal Punjabi Dhaba Operations Manager. Backend: 34/34 pytest tests passed covering auth, RBAC, items CRUD, purchases, usage, sales, stock math (in/low/out), alerts, dashboard, categories/units, business profile, users, bulk reorder, and staff data isolation. Frontend: login/redirects/dashboard/live stock/alerts/purchases/settings/display mode all render correctly, BUT a CRITICAL uncaught runtime error 'destroy is not a function' appears on the Item Master and Daily Usage pages, with React warning indicating useEffect(async () => ...) misuse — the async useEffect returns a Promise that React tries to call as a cleanup function. This shows a full-page red error overlay that blocks the user.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Items page (/items) and Daily Usage page (/usage)", "issue": "Uncaught runtime error 'TypeError: destroy is not a function' renders a full-screen red error overlay. Root cause: useEffect callback is declared async (or returns a Promise) — React expects a cleanup function or undefined as the return value. React console warning confirms: 'useEffect must not return anything besides a function, which is used for clean-up.'", "selector": "react-error-overlay", "priority": "CRITICAL"},
+      {"component": "Login page", "issue": "Console error 'Cannot update a component (BrowserRouter) while rendering a different component (Login)'. Indicates setState / navigate() being called during render instead of inside useEffect.", "selector": "Login.jsx", "priority": "MEDIUM"},
+      {"component": "Dashboard charts", "issue": "Recharts warning 'width(-1) and height(-1) of chart should be greater than 0' on initial render — ResponsiveContainer parent has no explicit min height.", "selector": "Dashboard chart container", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_backend.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "Fix useEffect(async () => ...) misuse in pages that render after navigation. Likely culprits: /app/frontend/src/pages/Items.jsx and /app/frontend/src/pages/DailyUsage.jsx (and possibly other pages). Refactor to: useEffect(() => { (async () => { ... })(); }, [deps]);",
+    "Fix Login.jsx setState-in-render warning — wrap any redirect/navigate logic inside useEffect instead of calling during component body when user is already authenticated.",
+    "Add minHeight on Recharts ResponsiveContainer or pass explicit aspect to avoid width/height = -1 warning on first paint."
+  ],
+  "critical_code_review_comments": [
+    "useEffect async misuse is the root cause of the visible app crash on /items and /usage — this is a release-blocker because users cannot use Item Master or Daily Usage at all.",
+    "server.py uses deprecated @app.on_event('startup'/'shutdown') — should migrate to FastAPI lifespan context manager (non-blocking, but will break in future FastAPI versions).",
+    "Backend CORS_ORIGINS='*' combined with allow_credentials=True is invalid per CORS spec; browsers will reject credentialed requests. Currently OK because the frontend uses Bearer tokens (not cookies), but should be tightened.",
+    "server.py is 728 lines — consider splitting into routers (auth, items, purchases, usage, sales, stock, settings).",
+    "Pydantic v2 deprecation: payload.dict() is deprecated — use payload.model_dump(exclude_none=True)."
+  ],
+  "updated_files": ["/app/backend/tests/test_backend.py", "/app/backend/tests/__init__.py"],
+  "success_rate": {"backend": "100% (34/34)", "frontend": "~75% — most pages work, but /items and /usage crash with red error overlay"},
+  "test_credentials": "admin@sprojal.com/Admin@123, lokesh@sprojal.com/Staff@123, display@sprojal.com/View@123 — all valid; seed reset-on-startup works",
+  "seed_data_creation": "Backend tests created a handful of TEST_ prefixed items (TEST_Item_*, TEST_Patch_*, TEST_Stock_*) and TEST_Cat_*, TEST_U_* categories/units. Also created two purchases on 2026-01-10 (Chicken 10kg @250) and a sales entry. These do not affect the 33 seeded items count.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend is fully green (34/34). After main agent fixes the useEffect async return on Items.jsx and DailyUsage.jsx, retest those two pages: navigate to /items and /usage as admin, verify no red error overlay appears and CRUD modal / multi-item row entry work. Also verify Login.jsx no longer triggers the 'setState during render' warning. Use test file /app/backend/tests/test_backend.py for regression.",
+  "rca of the issue": "Frontend crash RCA — React's useEffect contract: the function passed must return either undefined or a cleanup function. If you write `useEffect(async () => { ... })`, the function returns a Promise, and on unmount React calls promise() as if it were a cleanup → 'destroy is not a function'. The console explicitly shows this warning. Fix: wrap async logic: `useEffect(() => { let cancelled = false; (async () => { /* fetch */ })(); return () => { cancelled = true; }; }, []);`. The crash appears when navigating to /items and /usage as admin."
+}
