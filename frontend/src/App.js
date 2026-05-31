@@ -14,6 +14,9 @@ import Sales from "@/pages/Sales";
 import Items from "@/pages/Items";
 import Settings from "@/pages/Settings";
 import DisplayMode from "@/pages/DisplayMode";
+import Expenses from "@/pages/Expenses";
+import Salaries from "@/pages/Salaries";
+import PnL from "@/pages/PnL";
 import "@/App.css";
 
 function RootRedirect() {
@@ -52,6 +55,15 @@ export default function App() {
             } />
             <Route path="/items" element={
               <ProtectedRoute roles={["admin"]}><Items /></ProtectedRoute>
+            } />
+            <Route path="/expenses" element={
+              <ProtectedRoute roles={["admin", "staff", "viewer"]}><Expenses /></ProtectedRoute>
+            } />
+            <Route path="/salaries" element={
+              <ProtectedRoute roles={["admin", "viewer"]}><Salaries /></ProtectedRoute>
+            } />
+            <Route path="/pnl" element={
+              <ProtectedRoute roles={["admin", "viewer"]}><PnL /></ProtectedRoute>
             } />
             <Route path="/settings" element={
               <ProtectedRoute roles={["admin"]}><Settings /></ProtectedRoute>

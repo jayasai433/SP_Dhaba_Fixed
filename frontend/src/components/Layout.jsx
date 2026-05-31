@@ -5,7 +5,8 @@ import api from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard, Package, ShoppingCart, ChefHat, IndianRupee,
-  Boxes, BellRing, Settings, LogOut, Tv, Menu, X
+  Boxes, BellRing, Settings, LogOut, Tv, Menu, X,
+  Wallet, Users, LineChart
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -17,15 +18,18 @@ const NAV = [
   { to: "/purchases", label: "Purchases", icon: ShoppingCart, roles: ["admin", "staff"] },
   { to: "/usage", label: "Daily Usage", icon: ChefHat, roles: ["admin", "staff"] },
   { to: "/sales", label: "Sales", icon: IndianRupee, roles: ["admin", "staff"] },
+  { to: "/expenses", label: "Expenses", icon: Wallet, roles: ["admin", "staff"] },
+  { to: "/salaries", label: "Salaries", icon: Users, roles: ["admin"] },
+  { to: "/pnl", label: "P&L Statement", icon: LineChart, roles: ["admin", "viewer"] },
   { to: "/items", label: "Item Master", icon: Package, roles: ["admin"] },
   { to: "/display", label: "Display Mode", icon: Tv, roles: ["viewer", "admin"] },
   { to: "/settings", label: "Settings", icon: Settings, roles: ["admin"] },
 ];
 
 const MOBILE_NAV_BY_ROLE = {
-  admin: ["/dashboard", "/stock", "/purchases", "/usage", "/sales"],
-  staff: ["/stock", "/purchases", "/usage", "/sales", "/alerts"],
-  viewer: ["/dashboard", "/stock", "/alerts", "/display"],
+  admin: ["/dashboard", "/stock", "/purchases", "/sales", "/pnl"],
+  staff: ["/stock", "/purchases", "/usage", "/sales", "/expenses"],
+  viewer: ["/dashboard", "/stock", "/alerts", "/pnl", "/display"],
 };
 
 export default function Layout() {

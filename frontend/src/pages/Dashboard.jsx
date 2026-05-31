@@ -4,7 +4,8 @@ import { inr, fmtDate, todayIST } from "@/lib/format";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import {
-  IndianRupee, TrendingUp, ShoppingBag, AlertTriangle, PackageX, CalendarDays
+  IndianRupee, TrendingUp, ShoppingBag, AlertTriangle, PackageX, CalendarDays,
+  Wallet, TrendingDown, Scale
 } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip,
@@ -76,9 +77,13 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         <KPI testid="kpi-today-sales" icon={CalendarDays} label="Today's Sales" value={inr(data.today_sales)} color="orange" />
+        <KPI testid="kpi-today-expenses" icon={Wallet} label="Today's Expenses" value={inr(data.today_expenses)} color="amber" />
+        <KPI testid="kpi-today-pnl" icon={data.today_pnl >= 0 ? TrendingUp : TrendingDown}
+             label="Today's P&L" value={inr(Math.abs(data.today_pnl))}
+             color={data.today_pnl >= 0 ? "green" : "red"} />
         <KPI testid="kpi-total-sales" icon={IndianRupee} label="Total Sales" value={inr(data.total_sales)} color="green" />
         <KPI testid="kpi-total-spent" icon={ShoppingBag} label="Total Spent" value={inr(data.total_spent)} color="amber" />
-        <KPI testid="kpi-profit" icon={TrendingUp} label="Est. Profit" value={inr(data.profit)} color={data.profit >= 0 ? "green" : "red"} />
+        <KPI testid="kpi-profit" icon={Scale} label="Overall P&L" value={inr(Math.abs(data.profit))} hint={data.profit >= 0 ? "Profit" : "Loss"} color={data.profit >= 0 ? "green" : "red"} />
         <KPI testid="kpi-low-stock" icon={AlertTriangle} label="Low Stock" value={data.low_stock_count} color="amber" />
         <KPI testid="kpi-out-stock" icon={PackageX} label="Out of Stock" value={data.out_of_stock_count} color="red" />
       </div>
@@ -131,7 +136,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card className="rounded-2xl border-orange-900/10 shadow-sm" data-testid="category-spend-card">
           <CardContent className="p-5">
-            <h3 className="font-display text-lg font-semibold text-slate-900 mb-4">Category-wise Spend</h3>
+            <h3 className="font-display text-lg font-semibold text-slate-900 mb-4">Purchase Spend by Item Category</h3>
             <div className="space-y-3">
               {data.category_spend.length === 0 && (
                 <p className="text-sm text-slate-500">No purchase data yet.</p>
@@ -149,26 +154,49 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card className="rounded-2xl border-orange-900/10 shadow-sm" data-testid="top-items-card">
+        <Card className="rounded-2xl border-orange-900/10 shadow-sm" data-testid="expense-spend-card">
           <CardContent className="p-5">
-            <h3 className="font-display text-lg font-semibold text-slate-900 mb-4">Top 5 Items by Cost</h3>
+            <h3 className="font-display text-lg font-semibold text-slate-900 mb-4">Operating Expense Breakdown</h3>
             <div className="space-y-3">
-              {data.top_items.length === 0 && (
-                <p className="text-sm text-slate-500">No purchase data yet.</p>
+              {(!data.expense_category_spend || data.expense_category_spend.length === 0) && (
+                <p className="text-sm text-slate-500">No expense data yet.</p>
               )}
-              {data.top_items.map((it, i) => (
-                <div key={it.name} className="flex items-center justify-between p-3 rounded-xl bg-orange-50/50">
-                  <div className="flex items-center gap-3">
-                    <div className="h-8 w-8 rounded-lg bg-orange-600 text-white flex items-center justify-center text-sm font-bold">{i + 1}</div>
-                    <div className="font-medium text-slate-800">{it.name}</div>
+              {(data.expense_category_spend || []).map((c) => {
+                const maxExp = Math.max(1, ...(data.expense_category_spend || []).map((x) => x.amount));
+                return (
+                  <div key={c.category}>
+                    <div className="flex justify-between text-sm mb-1.5">
+                      <span className="font-medium text-slate-700">{c.category}</span>
+                      <span className="tabular-nums text-slate-900 font-semibold">{inr(c.amount)}</span>
+                    </div>
+                    <Progress value={(c.amount / maxExp) * 100} className="h-2" />
                   </div>
-                  <div className="tabular-nums font-semibold text-slate-900">{inr(it.amount)}</div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </CardContent>
         </Card>
       </div>
+
+      <Card className="rounded-2xl border-orange-900/10 shadow-sm" data-testid="top-items-card">
+        <CardContent className="p-5">
+          <h3 className="font-display text-lg font-semibold text-slate-900 mb-4">Top 5 Items by Cost</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
+            {data.top_items.length === 0 && (
+              <p className="text-sm text-slate-500">No purchase data yet.</p>
+            )}
+            {data.top_items.map((it, i) => (
+              <div key={it.name} className="flex items-center justify-between p-3 rounded-xl bg-orange-50/50">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="h-8 w-8 shrink-0 rounded-lg bg-orange-600 text-white flex items-center justify-center text-sm font-bold">{i + 1}</div>
+                  <div className="font-medium text-slate-800 truncate">{it.name}</div>
+                </div>
+                <div className="tabular-nums font-semibold text-slate-900 ml-2 shrink-0">{inr(it.amount)}</div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

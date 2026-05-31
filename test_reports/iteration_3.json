@@ -1,0 +1,46 @@
+{
+  "summary": "Comprehensive backend + frontend testing of new features (Expenses, Salaries, P&L, WhatsApp log-only, enhanced Dashboard/Settings). Updated /app/backend/tests/test_backend.py with new @spdhaba.com credentials and added 17 new test cases covering Expenses (T01-T04), Expense Categories (T32), Staff payroll, Salaries CRUD + duplicate-409 + mark-paid + deactivated staff visibility (T06-T10), P&L arithmetic + 30-day trend + PDF export (T11-T17), enhanced Dashboard KPIs (T23-T25), WhatsApp number CRUD + test endpoint with status='log_only' + large_purchase trigger via background task + run-job for morning_report/daily_report/no_sales_reminder (T18-T22), and User deactivation→login-blocked (T34). All 28 backend tests passed (100%). Frontend smoke tested via Playwright: admin login → Dashboard, Expenses, Salaries, P&L, Settings all render correctly with new KPIs/tabs/charts. WhatsApp 'log_only' status confirmed in /api/whatsapp/log. PDF export returns valid application/pdf with %PDF magic bytes. Large purchase ≥₹5000 correctly triggers async 'large_purchase' notification log within ~2s of POST /api/purchases.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Dashboard + P&L charts (Recharts)", "issue": "'width(-1) and height(-1) of chart should be greater than 0' warning still appears 4x on Dashboard and 2x on P&L on first paint. Same cosmetic issue reported in iteration_2 — minHeight fix did NOT eliminate it. Suggest replacing Tailwind 'h-64' with explicit inline style={{ width: '100%', height: 256 }} on the ResponsiveContainer parent, or use `aspect` prop, or gate rendering until measured.", "selector": ".recharts-responsive-container", "priority": "LOW"},
+      {"component": "Expenses page filters (From/To dates) + Salaries month picker", "issue": "Uses browser-native <input type='date'>/<input type='month'> instead of shadcn Calendar component — inconsistent with rest of app and platform-dependent rendering (looks different on Safari vs Chrome).", "selector": "input[type='date'], input[type='month']", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Settings page", "issues": ["8 tabs (Business, Categories, Expense Cats, Units, Users, Payroll Staff, WhatsApp, Reorder Levels) now fit on a single row at 1920px but will likely wrap/overflow at smaller viewports — verify tablet/mobile rendering."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_backend.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "(Pre-existing, repeat from iter_2) Persistent Recharts width(-1)/height(-1) warning on Dashboard (4x) + P&L (2x) — switch from Tailwind class h-64 to inline style={{height:256}} on chart parents, or use `aspect` prop.",
+    "(Optional) Replace native <input type='date'>/<input type='month'> on Expenses/Salaries with shadcn Calendar/MonthPicker for visual consistency.",
+    "(Optional) Verify Settings tabs do not wrap awkwardly on tablet/mobile breakpoints — there are now 8 tabs."
+  ],
+  "critical_code_review_comments": [
+    "SECURITY OK: hash_password uses bcrypt (server.py:50), JWT_SECRET loaded from env, no plaintext secrets in code, role enforcement via require_roles decorator on every protected route.",
+    "WHATSAPP OK: _wa_send_to_number writes log entry even when token/pnid blank (LOG-ONLY mode) — correct mocked behavior. asyncio.create_task ensures purchase POST is not blocked by WA failures.",
+    "PNL OK: revenue−cogs−expenses−salaries=net_profit computed server-side, salaries only counted when paid_date present and in-range.",
+    "MINOR: /api/expenses POST does not validate category against db.expense_categories — any string is accepted as 'category'. Consider adding FK-like validation to prevent typos/orphan categories.",
+    "MINOR: server.py is now 1368 lines — still acceptable but approaching the 700-line guideline for splitting; suggest extracting WhatsApp + Scheduler into a separate module."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_backend.py"
+  ],
+  "success_rate": {
+    "backend": "100% (28/28 tests passed)",
+    "frontend": "100% on smoke checks (all 5 new pages render, Settings has all 8 tabs, Dashboard shows all new KPIs, P&L Net Loss styling correct, charts render)"
+  },
+  "test_credentials": "admin@spdhaba.com / Admin@123, lokesh@spdhaba.com / Staff@123, display@spdhaba.com / View@123 — all verified working",
+  "seed_data_creation": "Test created: 1 expense category (TEST_EC_*), 1 expense (₹123.45 on 2026-02-15), 2 payroll staff (TEST_Staff_*, TEST_Sal_*), 1 salary (₹8000 net), several TEST_Stock_* items + purchases, 3 WhatsApp numbers (TEST_*, TEST_Off_*, TEST_LP_*), 1 deactivated test user.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend at 100% for all major features. test_backend.py is the regression suite — runs in ~11s. WhatsApp is intentionally in LOG-ONLY mode (WHATSAPP_ACCESS_TOKEN blank in /app/backend/.env) — all notifications get status='log_only' which is EXPECTED. The Recharts warning is a low-priority cosmetic issue carried over from iteration_2; not addressed in this iteration. Frontend pages all render correctly: /dashboard, /expenses, /salaries, /pnl, /settings, plus existing /items, /usage, /sales, /purchases, /alerts.",
+  "rca of the issue": "No critical issues found. The 4x Recharts width(-1)/height(-1) warning is the same cosmetic issue from iteration_2 — root cause is the ResponsiveContainer mounting before the Tailwind h-64 class applies layout. Mitigation: use inline style={{height:256}} on chart wrappers (carried over from iter_2)."
+}
