@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import api from "@/lib/api";
+import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -30,23 +31,31 @@ export default function PnL() {
   const [trend, setTrend] = useState([]);
 
   useEffect(() => {
-    api.get("/pnl", { params: { period } }).then(({ data }) => setPnl(data));
+    api.get("/pnl", { params: { period } })
+      .then(({ data }) => setPnl(data))
+      .catch(() => {});
   }, [period]);
 
   useEffect(() => {
-    api.get("/pnl/trend", { params: { days: 30 } }).then(({ data }) => setTrend(data));
+    api.get("/pnl/trend", { params: { days: 30 } })
+      .then(({ data }) => setTrend(data))
+      .catch(() => {});
   }, []);
 
   const download = async () => {
-    const { data, headers } = await api.get("/pnl/export", { params: { period }, responseType: "blob" });
-    const url = window.URL.createObjectURL(new Blob([data], { type: "application/pdf" }));
-    const a = document.createElement("a");
-    a.href = url;
-    const cd = headers["content-disposition"] || "";
-    const m = cd.match(/filename="?([^"]+)"?/);
-    a.download = m ? m[1] : `pnl-${period}.pdf`;
-    document.body.appendChild(a); a.click(); a.remove();
-    window.URL.revokeObjectURL(url);
+    try {
+      const { data, headers } = await api.get("/pnl/export", { params: { period }, responseType: "blob" });
+      const url = window.URL.createObjectURL(new Blob([data], { type: "application/pdf" }));
+      const a = document.createElement("a");
+      a.href = url;
+      const cd = headers["content-disposition"] || "";
+      const m = cd.match(/filename="?([^"]+)"?/);
+      a.download = m ? m[1] : `pnl-${period}.pdf`;
+      document.body.appendChild(a); a.click(); a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      toast.error("Failed to export PDF. Please try again.");
+    }
   };
 
   if (!pnl) {
