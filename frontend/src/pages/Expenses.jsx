@@ -12,6 +12,7 @@ import { Plus, Receipt, Wallet, Ban } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSave } from "@/hooks/useSave";
 import { useDateFilter } from "@/hooks/useDateFilter";
+import DuplicateWarningDialog from "@/components/DuplicateWarningDialog";
 
 export default function Expenses() {
   const { user } = useAuth();
@@ -32,7 +33,7 @@ export default function Expenses() {
   }, [filterCat, dateParams]);
   useEffect(() => { load(); }, [load]);
 
-  const { save, saving } = useSave(
+  const { save, saving, dupDialog, confirmDuplicate, cancelDuplicate } = useSave(
     () => api.post("/expenses", { date, category: cat, description: desc, amount: parseFloat(amt) }),
     { successMessage: "Expense saved", onSuccess: () => { setDesc(""); setAmt(""); load(); } }
   );
@@ -70,6 +71,12 @@ export default function Expenses() {
 
   return (
     <div className="space-y-6 animate-fade-up" data-testid="expenses-page">
+      <DuplicateWarningDialog
+        open={dupDialog}
+        onConfirm={confirmDuplicate}
+        onCancel={cancelDuplicate}
+        message="An expense with the same category and amount was just recorded seconds ago. Did you intend to enter this again?"
+      />
       <div>
         <div className="text-xs font-semibold tracking-widest uppercase text-orange-700">Operating Expenses</div>
         <h1 className="font-display text-3xl sm:text-4xl font-bold text-slate-900">Expenses</h1>

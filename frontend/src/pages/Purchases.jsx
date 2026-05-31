@@ -13,6 +13,7 @@ import { Plus, Receipt, Ban } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSave } from "@/hooks/useSave";
 import { useDateFilter } from "@/hooks/useDateFilter";
+import DuplicateWarningDialog from "@/components/DuplicateWarningDialog";
 
 export default function Purchases() {
   const [params] = useSearchParams();
@@ -40,7 +41,7 @@ export default function Purchases() {
   const total = (parseFloat(qty || 0) * parseFloat(price || 0)) || 0;
   const runningTotal = rows.reduce((a, b) => a + (b.total_cost || 0), 0);
 
-  const { save, saving } = useSave(
+  const { save, saving, dupDialog, confirmDuplicate, cancelDuplicate } = useSave(
     () => api.post("/purchases", {
       item_id: itemId, date, quantity: parseFloat(qty), price_per_unit: parseFloat(price),
     }),
@@ -69,6 +70,12 @@ export default function Purchases() {
 
   return (
     <div className="space-y-6 animate-fade-up" data-testid="purchases-page">
+      <DuplicateWarningDialog
+        open={dupDialog}
+        onConfirm={confirmDuplicate}
+        onCancel={cancelDuplicate}
+        message="A purchase for the same item and quantity was just recorded seconds ago. Did you intend to enter this again?"
+      />
       <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
         <div>
           <div className="text-xs font-semibold tracking-widest uppercase text-orange-700">Inventory</div>

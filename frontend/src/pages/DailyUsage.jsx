@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { fmtDate, fmtTimestamp, todayIST } from "@/lib/format";
 import { Plus, X, ChefHat, Ban } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import DuplicateWarningDialog from "@/components/DuplicateWarningDialog";
 
 export default function DailyUsage() {
   const { user } = useAuth();
@@ -20,6 +21,8 @@ export default function DailyUsage() {
   const [date, setDate] = useState(todayIST());
   const [entries, setEntries] = useState([{ rid: crypto.randomUUID(), item_id: "", qty: "", notes: "" }]);
   const [saving, setSaving] = useState(false);
+  const [dupDialog, setDupDialog] = useState(false);
+  const [pendingEntries, setPendingEntries] = useState([]);
 
   const load = useCallback(() => {
     api.get("/items").then(({ data }) => setItems(data));
@@ -35,21 +38,7 @@ export default function DailyUsage() {
   const updateRow = (rid, key, val) =>
     setEntries((e) => e.map((r) => (r.rid === rid ? { ...r, [key]: val } : r)));
 
-  const submit = async (e) => {
-    e.preventDefault();
-    const valid = entries.filter((r) => r.item_id && parseFloat(r.qty) > 0);
-    if (valid.length === 0) return toast.error("Add at least one valid item & quantity");
-    // warn for overuse
-    for (const r of valid) {
-      const left = stockMap[r.item_id] ?? 0;
-      if (parseFloat(r.qty) > left) {
-        const item = items.find((i) => i.id === r.item_id);
-        if (!window.confirm(`Usage of ${r.qty} ${item?.unit} for "${item?.name}" exceeds available stock (${left}). Continue anyway?`)) {
-          return;
-        }
-        break;
-      }
-    }
+  const _saveEntries = async (valid) => {
     setSaving(true);
     try {
       for (const r of valid) {
@@ -60,9 +49,46 @@ export default function DailyUsage() {
       toast.success(`${valid.length} usage entr${valid.length === 1 ? "y" : "ies"} saved`);
       setEntries([{ rid: crypto.randomUUID(), item_id: "", qty: "", notes: "" }]);
       load();
-      api.get("/stock").then(({ data }) => setStockMap(Object.fromEntries(data.map((s) => [s.item_id, s.qty_left]))));
-    } catch (err) { toast.error(formatApiError(err)); }
-    finally { setSaving(false); }
+      api.get("/stock").then(({ data }) => setStockMap(Object.fromEntries(data.map((s) => [s.item_id, s.qty_left])))).catch(() => {});
+    } catch (err) {
+      const status = err?.response?.status;
+      const msg = formatApiError(err);
+      if (status === 409 && msg.toLowerCase().includes("duplicate")) {
+        setPendingEntries(valid);
+        setDupDialog(true);
+      } else {
+        toast.error(msg);
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const confirmDuplicate = () => {
+    setDupDialog(false);
+    const toSave = pendingEntries;
+    setPendingEntries([]);
+    _saveEntries(toSave);
+  };
+
+  const cancelDuplicate = () => {
+    setDupDialog(false);
+    setPendingEntries([]);
+  };
+
+  const submit = async (e) => {
+    e.preventDefault();
+    const valid = entries.filter((r) => r.item_id && parseFloat(r.qty) > 0);
+    if (valid.length === 0) return toast.error("Add at least one valid item & quantity");
+    for (const r of valid) {
+      const left = stockMap[r.item_id] ?? 0;
+      if (parseFloat(r.qty) > left) {
+        const item = items.find((i) => i.id === r.item_id);
+        if (!window.confirm(`Usage of ${r.qty} ${item?.unit} for "${item?.name}" exceeds available stock (${left}). Continue anyway?`)) return;
+        break;
+      }
+    }
+    await _saveEntries(valid);
   };
 
   const voidRow = async (id) => {
@@ -79,6 +105,12 @@ export default function DailyUsage() {
 
   return (
     <div className="space-y-6 animate-fade-up" data-testid="usage-page">
+      <DuplicateWarningDialog
+        open={dupDialog}
+        onConfirm={confirmDuplicate}
+        onCancel={cancelDuplicate}
+        message="A similar usage entry was just recorded seconds ago. Did you intend to enter this again?"
+      />
       <div>
         <div className="text-xs font-semibold tracking-widest uppercase text-orange-700">Kitchen</div>
         <h1 className="font-display text-3xl sm:text-4xl font-bold text-slate-900">Daily Usage</h1>

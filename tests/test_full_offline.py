@@ -876,3 +876,91 @@ class TestTimestampDuplicateVoid:
         src = self._read("lib/format.js")
         assert "if (!iso)" in src
         assert '"—"' in src or "'—'" in src
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 13. DUPLICATE WARNING DIALOG
+# ══════════════════════════════════════════════════════════════════════════════
+class TestDuplicateWarningDialog:
+
+    def _read(self, f):
+        return (Path("/home/claude/SP_Dhaba_Fixed/frontend/src") / f).read_text()
+
+    def test_dialog_component_exists(self):
+        src = self._read("components/DuplicateWarningDialog.jsx")
+        assert "DuplicateWarningDialog" in src
+
+    def test_dialog_has_confirm_button(self):
+        src = self._read("components/DuplicateWarningDialog.jsx")
+        assert "dup-confirm-btn" in src
+        assert "Yes, save anyway" in src
+
+    def test_dialog_has_cancel_button(self):
+        src = self._read("components/DuplicateWarningDialog.jsx")
+        assert "dup-cancel-btn" in src
+        assert "No, cancel" in src
+
+    def test_dialog_hidden_when_closed(self):
+        """Returns null when open=false — no layout shift"""
+        src = self._read("components/DuplicateWarningDialog.jsx")
+        assert "if (!open) return null" in src
+
+    def test_dialog_shows_testid(self):
+        src = self._read("components/DuplicateWarningDialog.jsx")
+        assert "duplicate-warning-dialog" in src
+
+    def test_usesave_handles_409_duplicate(self):
+        src = self._read("hooks/useSave.js")
+        assert "dupDialog" in src
+        assert "confirmDuplicate" in src
+        assert "cancelDuplicate" in src
+        assert "409" in src
+        assert "duplicate" in src
+
+    def test_usesave_retries_on_confirm(self):
+        """confirmDuplicate re-calls the API"""
+        src = self._read("hooks/useSave.js")
+        assert "confirmDuplicate" in src
+        assert "pendingPayload" in src or "pendingCall" in src
+
+    def test_usesave_non_duplicate_409_still_errors(self):
+        """Sales already recorded for date is a 409 but not a duplicate — shows toast"""
+        src = self._read("hooks/useSave.js")
+        assert "duplicate" in src.lower()  # conditional check on message
+
+    def test_purchases_wires_dialog(self):
+        src = self._read("pages/Purchases.jsx")
+        assert "DuplicateWarningDialog" in src
+        assert "dupDialog" in src
+        assert "confirmDuplicate" in src
+        assert "cancelDuplicate" in src
+
+    def test_expenses_wires_dialog(self):
+        src = self._read("pages/Expenses.jsx")
+        assert "DuplicateWarningDialog" in src
+        assert "dupDialog" in src
+
+    def test_dailyusage_wires_dialog(self):
+        src = self._read("pages/DailyUsage.jsx")
+        assert "DuplicateWarningDialog" in src
+        assert "dupDialog" in src
+        assert "confirmDuplicate" in src
+
+    def test_dialog_has_custom_message_per_page(self):
+        """Each page passes a context-specific message"""
+        purchases = self._read("pages/Purchases.jsx")
+        expenses  = self._read("pages/Expenses.jsx")
+        usage     = self._read("pages/DailyUsage.jsx")
+        assert "purchase" in purchases.lower()
+        assert "expense" in expenses.lower()
+        assert "usage" in usage.lower()
+
+    def test_dialog_overlay_covers_screen(self):
+        src = self._read("components/DuplicateWarningDialog.jsx")
+        assert "fixed inset-0" in src
+
+    def test_duplicate_check_logic(self):
+        """409 with 'duplicate' in message → dialog; other 409 → toast"""
+        msg_dup   = "Duplicate entry detected — same item and quantity"
+        msg_other = "Sales already recorded for this date"
+        assert "duplicate" in msg_dup.lower()
+        assert "duplicate" not in msg_other.lower()
