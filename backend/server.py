@@ -26,6 +26,22 @@ import pytz
 
 IST = pytz.timezone("Asia/Kolkata")
 
+# ---------------- Login Rate Limiter ----------------
+from collections import defaultdict
+import time as _time
+
+_login_attempts: dict = defaultdict(list)
+_LOGIN_MAX = 10        # max attempts
+_LOGIN_WINDOW = 300    # per 5 minutes
+
+def _check_rate_limit(ip: str):
+    now = _time.time()
+    attempts = [t for t in _login_attempts[ip] if now - t < _LOGIN_WINDOW]
+    _login_attempts[ip] = attempts
+    if len(attempts) >= _LOGIN_MAX:
+        raise HTTPException(status_code=429, detail="Too many login attempts. Try again in 5 minutes.")
+    _login_attempts[ip].append(now)
+
 # ---------------- DB & App ----------------
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
@@ -386,7 +402,8 @@ COOKIE_NAME = "sp_token"
 COOKIE_MAX_AGE = TOKEN_TTL_HOURS * 3600
 
 @api.post("/auth/login")
-async def login(payload: LoginIn, response: Response):
+async def login(payload: LoginIn, response: Response, request: Request):
+    _check_rate_limit(request.client.host if request.client else "unknown")
     user = await db.users.find_one({"email": payload.email.lower()})
     if not user or not user.get("is_active", True):
         raise HTTPException(status_code=401, detail="Invalid email or password")
@@ -452,8 +469,10 @@ async def update_user(user_id: str, payload: UserUpdateIn, user=Depends(require_
 @api.post("/users/{user_id}/reset-password")
 async def reset_user_password(user_id: str, payload: PasswordResetIn,
                                user=Depends(require_roles("admin"))):
-    if len(payload.new_password) < 4:
-        raise HTTPException(400, "Password too short")
+    if len(payload.new_password) < 8:
+        raise HTTPException(400, "Password must be at least 8 characters")
+    if not any(c.isupper() for c in payload.new_password) or not any(c.isdigit() for c in payload.new_password):
+        raise HTTPException(400, "Password must contain at least one uppercase letter and one number")
     res = await db.users.update_one(
         {"id": user_id},
         {"$set": {"password_hash": hash_password(payload.new_password)}}
@@ -816,6 +835,8 @@ async def get_business_profile(user=Depends(get_current_user)):
 @api.patch("/business-profile")
 async def update_business_profile(payload: BusinessProfileIn,
                                    user=Depends(require_roles("admin"))):
+    if payload.logo_base64 and len(payload.logo_base64) > 700_000:
+        raise HTTPException(400, "Logo image too large. Maximum size is 500KB.")
     update = {k: v for k, v in payload.dict().items() if v is not None}
     update["updated_at"] = iso(now_utc())
     await db.business_profile.update_one({"key": "main"}, {"$set": update}, upsert=True)
