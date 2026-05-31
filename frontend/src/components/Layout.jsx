@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation, Outlet } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
+import { useBusinessProfile } from "@/contexts/BusinessProfileContext";
 import api from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
@@ -34,14 +35,10 @@ const MOBILE_NAV_BY_ROLE = {
 
 export default function Layout() {
   const { user, logout } = useAuth();
+  const { profile } = useBusinessProfile();
   const loc = useLocation();
-  const [profile, setProfile] = useState({ name: "SP Royal Punjabi Dhaba", logo_base64: "" });
   const [alertsCount, setAlertsCount] = useState(0);
   const [drawerOpen, setDrawerOpen] = useState(false);
-
-  useEffect(() => {
-    api.get("/business-profile").then(({ data }) => data && setProfile(data)).catch(() => {});
-  }, []);
 
   useEffect(() => {
     const fetchAlerts = () => api.get("/alerts")

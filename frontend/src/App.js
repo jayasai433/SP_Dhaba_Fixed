@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Toaster } from "@/components/ui/sonner";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { BusinessProfileProvider } from "@/contexts/BusinessProfileContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Layout from "@/components/Layout";
 import Login from "@/pages/Login";
@@ -31,8 +32,9 @@ function RootRedirect() {
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <Toaster richColors position="top-right" />
+      <BusinessProfileProvider>
+        <BrowserRouter>
+          <Toaster richColors position="top-right" />
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/forbidden" element={<Forbidden />} />
@@ -76,6 +78,7 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
+      </BusinessProfileProvider>
     </AuthProvider>
   );
 }

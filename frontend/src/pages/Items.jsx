@@ -1,15 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import api, { formatApiError } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Switch } from "@/components/ui/switch";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Search, Plus, Pencil } from "lucide-react";
+import ItemDialog from "@/pages/items/ItemDialog";
+
+const EMPTY_ITEM = { name: "", category: "", unit: "", reorder_level: 0, is_active: true };
 
 export default function Items() {
   const [items, setItems] = useState([]);
@@ -20,36 +20,37 @@ export default function Items() {
   const [editing, setEditing] = useState(null);
   const [open, setOpen] = useState(false);
 
-  const load = () => {
-    api.get("/items").then(({ data }) => setItems(data));
-    api.get("/categories").then(({ data }) => setCategories(data));
-    api.get("/units").then(({ data }) => setUnits(data));
-  };
-  useEffect(() => { load(); }, []);
+  const load = useCallback(async () => {
+    const [it, ca, un] = await Promise.all([
+      api.get("/items"), api.get("/categories"), api.get("/units"),
+    ]);
+    setItems(it.data); setCategories(ca.data); setUnits(un.data);
+  }, []);
+  useEffect(() => { load(); }, [load]);
 
   const filtered = useMemo(() => items
     .filter((i) => !q || i.name.toLowerCase().includes(q.toLowerCase()))
     .filter((i) => cat === "all" || i.category === cat),
     [items, q, cat]);
 
-  const openNew = () => { setEditing({ name: "", category: "", unit: "", reorder_level: 0, is_active: true }); setOpen(true); };
+  const openNew = () => { setEditing({ ...EMPTY_ITEM }); setOpen(true); };
   const openEdit = (it) => { setEditing({ ...it }); setOpen(true); };
 
-  const save = async () => {
-    if (!editing.name?.trim()) return toast.error("Name required");
-    if (!editing.category) return toast.error("Category required");
-    if (!editing.unit) return toast.error("Unit required");
+  const save = async (form) => {
+    if (!form.name?.trim()) return toast.error("Name required");
+    if (!form.category) return toast.error("Category required");
+    if (!form.unit) return toast.error("Unit required");
     try {
-      if (editing.id) {
-        await api.patch(`/items/${editing.id}`, {
-          name: editing.name, category: editing.category, unit: editing.unit,
-          reorder_level: parseFloat(editing.reorder_level), is_active: editing.is_active,
+      if (form.id) {
+        await api.patch(`/items/${form.id}`, {
+          name: form.name, category: form.category, unit: form.unit,
+          reorder_level: parseFloat(form.reorder_level), is_active: form.is_active,
         });
         toast.success("Item updated");
       } else {
         await api.post("/items", {
-          name: editing.name, category: editing.category, unit: editing.unit,
-          reorder_level: parseFloat(editing.reorder_level || 0),
+          name: form.name, category: form.category, unit: form.unit,
+          reorder_level: parseFloat(form.reorder_level || 0),
         });
         toast.success("Item added");
       }
@@ -91,12 +92,8 @@ export default function Items() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Item</TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead>Unit</TableHead>
-                  <TableHead className="text-right">Reorder Level</TableHead>
-                  <TableHead>Active</TableHead>
-                  <TableHead></TableHead>
+                  <TableHead>Item</TableHead><TableHead>Category</TableHead><TableHead>Unit</TableHead>
+                  <TableHead className="text-right">Reorder Level</TableHead><TableHead>Active</TableHead><TableHead></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -118,57 +115,10 @@ export default function Items() {
         </CardContent>
       </Card>
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="rounded-2xl" data-testid="item-dialog">
-          <DialogHeader>
-            <DialogTitle className="font-display">{editing?.id ? "Edit Item" : "Add New Item"}</DialogTitle>
-          </DialogHeader>
-          {editing && (
-            <div className="space-y-3">
-              <div>
-                <Label className="text-sm mb-1 block">Name</Label>
-                <Input data-testid="item-name-input" value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} className="h-11" />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-sm mb-1 block">Category</Label>
-                  <Select value={editing.category} onValueChange={(v) => setEditing({ ...editing, category: v })}>
-                    <SelectTrigger data-testid="item-category-select" className="h-11"><SelectValue placeholder="Select" /></SelectTrigger>
-                    <SelectContent>
-                      {categories.map((c) => <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label className="text-sm mb-1 block">Unit</Label>
-                  <Select value={editing.unit} onValueChange={(v) => setEditing({ ...editing, unit: v })}>
-                    <SelectTrigger data-testid="item-unit-select" className="h-11"><SelectValue placeholder="Select" /></SelectTrigger>
-                    <SelectContent>
-                      {units.map((u) => <SelectItem key={u.id} value={u.name}>{u.name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div>
-                <Label className="text-sm mb-1 block">Reorder Level</Label>
-                <Input type="number" min="0" step="0.01" data-testid="item-reorder-input"
-                  value={editing.reorder_level} onChange={(e) => setEditing({ ...editing, reorder_level: e.target.value })} className="h-11 tabular-nums" />
-              </div>
-              {editing.id && (
-                <div className="flex items-center justify-between p-3 rounded-xl bg-orange-50">
-                  <Label htmlFor="item-active" className="text-sm">Active (visible in dropdowns)</Label>
-                  <Switch id="item-active" data-testid="item-active-switch" checked={editing.is_active}
-                    onCheckedChange={(v) => setEditing({ ...editing, is_active: v })} />
-                </div>
-              )}
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)} className="rounded-full">Cancel</Button>
-            <Button onClick={save} data-testid="item-save-button" className="rounded-full bg-orange-600 hover:bg-orange-700">Save</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ItemDialog
+        open={open} onOpenChange={setOpen}
+        initial={editing} categories={categories} units={units} onSave={save}
+      />
     </div>
   );
 }

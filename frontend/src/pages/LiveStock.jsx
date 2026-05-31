@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Search, Package2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
+import { SKELETON_KEYS } from "@/lib/skeletons";
 
 const STATUS_META = {
   in: { label: "In Stock", color: "bg-[#E8F5E9] border-[#2E7D32]/20 text-[#2E7D32]", dot: "bg-[#2E7D32]" },
@@ -42,7 +43,7 @@ export default function LiveStock() {
       <div className="space-y-4">
         <Skeleton className="h-10 w-64" />
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-          {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-28 rounded-2xl" />)}
+          {SKELETON_KEYS.slice(0, 8).map((k) => <Skeleton key={k} className="h-28 rounded-2xl" />)}
         </div>
       </div>
     );

@@ -12,6 +12,7 @@ import {
   PieChart, Pie, Cell, CartesianGrid
 } from "recharts";
 import { Skeleton } from "@/components/ui/skeleton";
+import { SKELETON_KEYS } from "@/lib/skeletons";
 
 const STATUS_COLORS = { in: "#2E7D32", low: "#F57F17", out: "#C62828" };
 
@@ -54,7 +55,7 @@ export default function Dashboard() {
       <div className="space-y-6" data-testid="dashboard-loading">
         <Skeleton className="h-8 w-64" />
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-32 rounded-2xl" />)}
+          {SKELETON_KEYS.slice(0, 6).map((k) => <Skeleton key={k} className="h-32 rounded-2xl" />)}
         </div>
       </div>
     );

@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Sparkles, AlertCircle, PackageX, Plus } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { SKELETON_KEYS } from "@/lib/skeletons";
 
 export default function Alerts() {
   const [alerts, setAlerts] = useState(null);
@@ -18,7 +19,7 @@ export default function Alerts() {
   }, []);
 
   if (!alerts) {
-    return <div className="space-y-3">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-20 rounded-2xl" />)}</div>;
+    return <div className="space-y-3">{SKELETON_KEYS.slice(0, 4).map((k) => <Skeleton key={k} className="h-20 rounded-2xl" />)}</div>;
   }
 
   return (
