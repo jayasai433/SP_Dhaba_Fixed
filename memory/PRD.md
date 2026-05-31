@@ -1,59 +1,62 @@
 # SP Royal Punjabi Family Dhaba — Operations Manager (PRD)
 
 ## Original Problem Statement
-Build a production-ready, mobile-first lightweight ERP for an Indian roadside dhaba. Track Items, Purchases, Daily Usage, Sales, Live Stock (color-coded), Alerts, Dashboard, Display Mode, and provide self-service Admin Settings — no developer involvement for ongoing operational changes.
+Production-ready, mobile-first lightweight ERP for an Indian roadside dhaba with operations + financial features and self-service admin. Phase 2 enhancement adds Expenses, Salary, P&L, and WhatsApp notifications.
 
-## Stack & Architecture
-- **Frontend**: React 19 + Tailwind CSS + shadcn/ui + Recharts + sonner toasts + react-router 7
-- **Backend**: FastAPI + Motor (async MongoDB driver)
-- **DB**: MongoDB (collections: users, items, purchases, daily_usage, sales, categories, units, business_profile)
-- **Auth**: JWT Bearer tokens, 8h expiry, bcrypt password hashing
-- **Mobile-first**: Bottom nav on mobile, fixed sidebar on desktop
-- **Currency**: INR (₹), Date: DD-MMM-YYYY (IST)
+## Stack
+- **Frontend**: React 19, Tailwind, shadcn/ui, Recharts, sonner, react-router 7
+- **Backend**: FastAPI + Motor (async MongoDB) + APScheduler (IST cron jobs) + httpx + reportlab (PDF)
+- **DB**: MongoDB (collections: users, items, purchases, daily_usage, sales, categories, units, business_profile, expenses, expense_categories, staff, salaries, whatsapp_numbers, whatsapp_settings, notifications)
+- **Auth**: JWT Bearer (8h expiry, bcrypt)
+- **Locale**: INR (₹), DD-MMM-YYYY, IST (Asia/Kolkata)
 
-## User Personas & Roles
-- **Admin (Jaya Sai)**: Full control. Manages items, categories, units, users, business profile, sees all reports.
-- **Staff (Lokesh)**: Adds purchases/usage/sales. Sees only own entries. Cannot edit/delete/access settings.
-- **Viewer (Display)**: Read-only for partners; Display Mode for TV wall.
+## Roles
+- **Admin (Jaya Sai)**: Full access including Item Master, Settings (Business, Categories, Expense Cats, Units, Users, Payroll Staff, WhatsApp, Reorder Levels), Salary Tracker, P&L
+- **Staff (Lokesh)**: Purchases, Daily Usage, Sales, Expenses. Sees only own entries
+- **Viewer (Display)**: Read-only Dashboard, P&L, Live Stock, Alerts, Display Mode
 
-## What's Implemented (31-May-2026)
-- JWT auth with seeded demo accounts (admin/staff/viewer) + role-based route guards
-- Item Master CRUD with categories/units dropdowns (admin only); deactivate vs hard delete
-- Purchases with auto-calc total, running total, filters by date/item
-- Daily Usage with multi-item entry per session, stock overuse warning, optional notes
-- Sales (lunch + dinner + other), one-per-day enforcement, weekly/monthly totals
-- Live Stock with color-coded cards (green/yellow/red), 60s auto-refresh, search + filters
-- Alerts page sorted by urgency, celebration empty state, one-tap Log Purchase deep link
-- Summary Dashboard: 6 KPIs, 30-day sales trend chart, stock health donut, category spend, top 5 items
-- Display Mode (full-screen, live ticking clock, auto refresh)
-- Settings: Business profile (with logo upload base64), Category mgmt, Unit mgmt, User mgmt + reset password, Bulk reorder editor
-- 33 seeded items + 9 categories + 9 units pre-loaded for instant use
+## Implementation Log
+### MVP — 31-May-2026
+- JWT auth + 3 seeded accounts (admin@spdhaba.com, lokesh@spdhaba.com, display@spdhaba.com)
+- Item Master, Purchases, Daily Usage, Sales, Live Stock (color-coded), Alerts, Dashboard, Display Mode, Settings (Business, Categories, Units, Users, Reorder Bulk Edit)
+- 33 items + 9 categories + 9 units seeded
+
+### Phase 2 Enhancement — 31-May-2026
+- **Expense Tracker** with 6 pre-seeded categories (Maintenance, Utilities, Rent, Transport, Equipment, Others)
+- **Salary Tracker** with separate `db.staff` payroll roster (Lokesh seeded; owner not in payroll). Monthly entries with basic-advance=net, mark-as-paid flow
+- **Full P&L Statement** (Today/Week/Month/All) with PDF export via reportlab; 30-day daily P&L trend chart
+- **WhatsApp Notifications** in **LOG-ONLY mode** (blank credentials). Real send activates by adding `WHATSAPP_ACCESS_TOKEN` + `WHATSAPP_PHONE_NUMBER_ID` to `/app/backend/.env`. Triggers: out-of-stock, low-stock, large-purchase (₹5000 threshold), morning 8 AM IST report, daily 10 PM IST report, 11 PM IST no-sales reminder, daily loss alert. Notification log with retry support
+- **APScheduler** with IST cron jobs (morning_report 8AM, daily_report 10PM, no_sales_reminder 11PM)
+- **Enhanced Settings** with 3 new tabs: Expense Cats, Payroll Staff, WhatsApp Configuration
+- **Enhanced Dashboard** with Today's Expenses, Today's P&L (green/red), Overall P&L, Operating Expense Breakdown panel
+- **Expense category validation** at backend on create
 
 ## Test Coverage
-- Backend: 34/34 pytest cases pass (auth, RBAC, CRUD, math, filters, isolation)
-- Frontend: All pages render without errors. Verified via testing_agent_v3.
+- Iteration 1 (MVP): 34/34 backend, frontend pass
+- Iteration 2: Frontend re-test pass
+- Iteration 3 (Phase 2): **28/28 new backend tests pass, frontend smoke 100%**
 
-## Prioritized Backlog (Deferred)
+## Prioritized Backlog
 **P1**
-- Forgot-password self-service (currently admin-resets-only)
-- CSV export of purchases / usage / sales
-- Date-range filter on Dashboard
-- Edit purchase/usage entry by Admin (currently no edit after save)
+- WhatsApp real-sending: user provides `WHATSAPP_ACCESS_TOKEN` + `WHATSAPP_PHONE_NUMBER_ID` → flip from LOG-ONLY to live
+- WhatsApp webhook for delivery receipts (sent → delivered → read updates)
+- Edit purchases/usage/expense entries by admin
+- CSV export of expenses + salaries + transactions
 
 **P2**
 - Refresh-token flow (currently single 8h access token)
-- Per-meal category split on Sales
-- WhatsApp/SMS alert when stock crosses reorder level
-- Audit log of who-did-what
+- Shadcn Calendar / MonthPicker (instead of native HTML date inputs)
+- Audit log
+- Per-month P&L PDF schedule auto-email/WhatsApp
 
 **P3**
-- Multi-outlet support
-- PWA offline mode for unstable rural internet
-- i18n (Hindi/Punjabi UI)
+- Multi-outlet, PWA offline, i18n (Hindi/Punjabi)
+- Recharts width(-1) cosmetic warning fix (use inline `style={{height:256}}` instead of Tailwind `h-64` on chart parents)
+- Refactor server.py into modules once it exceeds ~1500 lines
 
 ## Demo Accounts (also in /app/memory/test_credentials.md)
 | Role   | Email                  | Password   |
 |--------|------------------------|------------|
-| admin  | admin@sprojal.com      | Admin@123  |
-| staff  | lokesh@sprojal.com     | Staff@123  |
-| viewer | display@sprojal.com    | View@123   |
+| admin  | admin@spdhaba.com      | Admin@123  |
+| staff  | lokesh@spdhaba.com     | Staff@123  |
+| viewer | display@spdhaba.com    | View@123   |

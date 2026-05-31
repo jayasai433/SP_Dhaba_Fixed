@@ -855,6 +855,9 @@ async def list_expenses(start: Optional[str] = None, end: Optional[str] = None,
 
 @api.post("/expenses")
 async def create_expense(payload: ExpenseIn, user=Depends(require_roles("admin", "staff"))):
+    cat = await db.expense_categories.find_one({"name": payload.category, "is_active": True})
+    if not cat:
+        raise HTTPException(400, "Invalid or inactive expense category")
     doc = {
         "id": str(uuid.uuid4()),
         "date": payload.date,
