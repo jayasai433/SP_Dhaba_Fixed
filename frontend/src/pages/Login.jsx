@@ -118,15 +118,6 @@ export default function Login() {
                 {loading ? "Signing in..." : "Sign in"}
               </Button>
             </form>
-
-            <div className="mt-6 p-4 rounded-xl bg-orange-50/70 border border-orange-100">
-              <div className="text-xs font-semibold tracking-wider uppercase text-orange-700 mb-2">Demo Accounts</div>
-              <div className="space-y-1 text-xs text-slate-700 tabular-nums">
-                <div><b>Admin:</b> admin@sprojal.com / Admin@123</div>
-                <div><b>Staff:</b> lokesh@sprojal.com / Staff@123</div>
-                <div><b>Viewer:</b> display@sprojal.com / View@123</div>
-              </div>
-            </div>
           </CardContent>
         </Card>
       </div>
