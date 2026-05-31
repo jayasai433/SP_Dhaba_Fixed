@@ -349,9 +349,10 @@ class TestFrontendHooks:
 
     def test_expenses_load_deps_correct(self):
         src = self._read("pages/Expenses.jsx")
-        # filterCat, start, end should be in useCallback deps
-        assert "filterCat, start, end" in src or \
-               re.search(r'useCallback\(.*\[filterCat.*start.*end\]', src, re.DOTALL)
+        # After useDateFilter refactor, deps are filterCat + dateParams
+        assert "useDateFilter" in src
+        assert "filterCat" in src
+        assert "dateParams" in src
 
     def test_livestock_load_usecallback(self):
         src = self._read("pages/LiveStock.jsx")

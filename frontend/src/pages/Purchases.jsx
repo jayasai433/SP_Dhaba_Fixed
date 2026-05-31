@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
-import api, { formatApiError } from "@/lib/api";
+import api from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,6 +11,8 @@ import { toast } from "sonner";
 import { inr, fmtDate, todayIST } from "@/lib/format";
 import { Plus, Receipt } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useSave } from "@/hooks/useSave";
+import { useDateFilter } from "@/hooks/useDateFilter";
 
 export default function Purchases() {
   const [params] = useSearchParams();
@@ -19,44 +21,37 @@ export default function Purchases() {
   const [items, setItems] = useState([]);
   const [rows, setRows] = useState([]);
   const [filterItem, setFilterItem] = useState("all");
-  const [start, setStart] = useState("");
-  const [end, setEnd] = useState("");
+  const { start, end, setStart, setEnd, dateParams } = useDateFilter();
 
   const [itemId, setItemId] = useState(params.get("item") || "");
   const [date, setDate] = useState(todayIST());
   const [qty, setQty] = useState("");
   const [price, setPrice] = useState("");
-  const [saving, setSaving] = useState(false);
 
-  useEffect(() => { api.get("/items").then(({ data }) => setItems(data)); }, []);
+  useEffect(() => { api.get("/items").then(({ data }) => setItems(data)).catch(() => {}); }, []);
   const load = useCallback(() => {
-    const q = {};
-    if (filterItem !== "all") q.item_id = filterItem;
-    if (start) q.start = start;
-    if (end) q.end = end;
-    api.get("/purchases", { params: q }).then(({ data }) => setRows(data));
-  }, [filterItem, start, end]);
+    const q = { ...dateParams, ...(filterItem !== "all" ? { item_id: filterItem } : {}) };
+    api.get("/purchases", { params: q }).then(({ data }) => setRows(data)).catch(() => {});
+  }, [filterItem, dateParams]);
   useEffect(() => { load(); }, [load]);
 
   const selectedItem = items.find((i) => i.id === itemId);
   const total = (parseFloat(qty || 0) * parseFloat(price || 0)) || 0;
   const runningTotal = rows.reduce((a, b) => a + (b.total_cost || 0), 0);
 
-  const submit = async (e) => {
+  const { save, saving } = useSave(
+    () => api.post("/purchases", {
+      item_id: itemId, date, quantity: parseFloat(qty), price_per_unit: parseFloat(price),
+    }),
+    { successMessage: "Purchase saved", onSuccess: () => { setQty(""); setPrice(""); load(); } }
+  );
+
+  const submit = (e) => {
     e.preventDefault();
     if (!itemId) return toast.error("Please select an item");
     if (!(parseFloat(qty) > 0)) return toast.error("Quantity must be greater than 0");
     if (!(parseFloat(price) >= 0)) return toast.error("Price cannot be negative");
-    setSaving(true);
-    try {
-      await api.post("/purchases", {
-        item_id: itemId, date, quantity: parseFloat(qty), price_per_unit: parseFloat(price),
-      });
-      toast.success("Purchase saved");
-      setQty(""); setPrice("");
-      load();
-    } catch (err) { toast.error(formatApiError(err)); }
-    finally { setSaving(false); }
+    save();
   };
 
   const activeItems = items.filter((i) => i.is_active);

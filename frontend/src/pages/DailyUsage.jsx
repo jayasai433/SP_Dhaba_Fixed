@@ -28,7 +28,6 @@ export default function DailyUsage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const addRow = () => setEntries((e) => [...e, { rid: crypto.randomUUID(), item_id: "", qty: "", notes: "" }]);
   const removeRow = (rid) => setEntries((e) => e.filter((r) => r.rid !== rid));
   const updateRow = (rid, key, val) =>
     setEntries((e) => e.map((r) => (r.rid === rid ? { ...r, [key]: val } : r)));

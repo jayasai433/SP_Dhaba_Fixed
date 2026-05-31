@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
-import api, { formatApiError } from "@/lib/api";
+import api from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,6 +9,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { toast } from "sonner";
 import { inr, fmtDate, todayIST } from "@/lib/format";
 import { Plus, Receipt, Wallet } from "lucide-react";
+import { useSave } from "@/hooks/useSave";
+import { useDateFilter } from "@/hooks/useDateFilter";
 
 export default function Expenses() {
   const [cats, setCats] = useState([]);
@@ -17,33 +19,26 @@ export default function Expenses() {
   const [cat, setCat] = useState("");
   const [desc, setDesc] = useState("");
   const [amt, setAmt] = useState("");
-  const [saving, setSaving] = useState(false);
   const [filterCat, setFilterCat] = useState("all");
-  const [start, setStart] = useState("");
-  const [end, setEnd] = useState("");
+  const { start, end, setStart, setEnd, dateParams } = useDateFilter();
 
-  useEffect(() => { api.get("/expense-categories").then(({ data }) => setCats(data)); }, []);
+  useEffect(() => { api.get("/expense-categories").then(({ data }) => setCats(data)).catch(() => {}); }, []);
   const load = useCallback(() => {
-    const q = {};
-    if (filterCat !== "all") q.category = filterCat;
-    if (start) q.start = start;
-    if (end) q.end = end;
-    api.get("/expenses", { params: q }).then(({ data }) => setRows(data));
-  }, [filterCat, start, end]);
+    const q = { ...dateParams, ...(filterCat !== "all" ? { category: filterCat } : {}) };
+    api.get("/expenses", { params: q }).then(({ data }) => setRows(data)).catch(() => {});
+  }, [filterCat, dateParams]);
   useEffect(() => { load(); }, [load]);
 
-  const submit = async (e) => {
+  const { save, saving } = useSave(
+    () => api.post("/expenses", { date, category: cat, description: desc, amount: parseFloat(amt) }),
+    { successMessage: "Expense saved", onSuccess: () => { setDesc(""); setAmt(""); load(); } }
+  );
+
+  const submit = (e) => {
     e.preventDefault();
     if (!cat) return toast.error("Select a category");
     if (!(parseFloat(amt) > 0)) return toast.error("Amount must be greater than 0");
-    setSaving(true);
-    try {
-      await api.post("/expenses", { date, category: cat, description: desc, amount: parseFloat(amt) });
-      toast.success("Expense saved");
-      setDesc(""); setAmt("");
-      load();
-    } catch (err) { toast.error(formatApiError(err)); }
-    finally { setSaving(false); }
+    save();
   };
 
   const { dayTotal, weekTotal, monthTotal } = useMemo(() => {

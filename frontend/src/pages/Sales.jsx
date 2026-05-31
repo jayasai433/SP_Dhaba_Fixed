@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
-import api, { formatApiError } from "@/lib/api";
+import api from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { toast } from "sonner";
 import { inr, fmtDate, todayIST } from "@/lib/format";
 import { IndianRupee, AlertTriangle } from "lucide-react";
+import { useSave } from "@/hooks/useSave";
 
 export default function Sales() {
   const [rows, setRows] = useState([]);
@@ -17,39 +18,36 @@ export default function Sales() {
   const [dinner, setDinner] = useState("");
   const [other, setOther] = useState("");
   const [notes, setNotes] = useState("");
-  const [saving, setSaving] = useState(false);
   const [duplicate, setDuplicate] = useState(null);
 
-  const load = useCallback(() => { api.get("/sales").then(({ data }) => setRows(data)); }, []);
+  const load = useCallback(() => { api.get("/sales").then(({ data }) => setRows(data)).catch(() => {}); }, []);
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
     if (!date) return setDuplicate(null);
-    api.get(`/sales/check/${date}`).then(({ data }) => setDuplicate(data.exists ? data.entry : null));
+    api.get(`/sales/check/${date}`).then(({ data }) => setDuplicate(data.exists ? data.entry : null)).catch(() => {});
   }, [date]);
 
   const total = (parseFloat(lunch || 0) + parseFloat(dinner || 0) + parseFloat(other || 0)) || 0;
 
-  const submit = async (e) => {
+  const { save, saving } = useSave(
+    () => api.post("/sales", {
+      date,
+      lunch_amount: parseFloat(lunch || 0),
+      dinner_amount: parseFloat(dinner || 0),
+      other_amount: parseFloat(other || 0),
+      notes: notes || "",
+    }),
+    { successMessage: "Sales saved", onSuccess: () => { setLunch(""); setDinner(""); setOther(""); setNotes(""); load(); } }
+  );
+
+  const submit = (e) => {
     e.preventDefault();
     if (duplicate) {
       if (!window.confirm(`Sales already saved for ${fmtDate(date)}. Cannot add again.`)) return;
       return;
     }
-    setSaving(true);
-    try {
-      await api.post("/sales", {
-        date,
-        lunch_amount: parseFloat(lunch || 0),
-        dinner_amount: parseFloat(dinner || 0),
-        other_amount: parseFloat(other || 0),
-        notes: notes || "",
-      });
-      toast.success("Sales saved");
-      setLunch(""); setDinner(""); setOther(""); setNotes("");
-      load();
-    } catch (err) { toast.error(formatApiError(err)); }
-    finally { setSaving(false); }
+    save();
   };
 
   const { weekly, monthly } = useMemo(() => {
