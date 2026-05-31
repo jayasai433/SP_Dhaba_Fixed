@@ -36,7 +36,7 @@ export default function Purchases() {
     if (end) q.end = end;
     api.get("/purchases", { params: q }).then(({ data }) => setRows(data));
   };
-  useEffect(load, [filterItem, start, end]);
+  useEffect(() => { load(); }, [filterItem, start, end]);
 
   const selectedItem = items.find((i) => i.id === itemId);
   const total = (parseFloat(qty || 0) * parseFloat(price || 0)) || 0;

@@ -89,8 +89,8 @@ export default function Dashboard() {
             <div className="flex items-baseline justify-between mb-3">
               <h3 className="font-display text-lg font-semibold text-slate-900">Daily Sales — Last 30 Days</h3>
             </div>
-            <div className="h-64 w-full">
-              <ResponsiveContainer>
+            <div className="h-64 w-full" style={{ minHeight: 240 }}>
+              <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={data.sales_trend}>
                   <CartesianGrid stroke="#F0E1D3" strokeDasharray="3 3" />
                   <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#64748B" }} tickFormatter={(d) => d.slice(5)} />
@@ -106,8 +106,8 @@ export default function Dashboard() {
         <Card className="rounded-2xl border-orange-900/10 shadow-sm" data-testid="stock-health-card">
           <CardContent className="p-5">
             <h3 className="font-display text-lg font-semibold text-slate-900 mb-3">Stock Health</h3>
-            <div className="h-48">
-              <ResponsiveContainer>
+            <div className="h-48" style={{ minHeight: 180 }}>
+              <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie data={pieData} dataKey="value" innerRadius={50} outerRadius={75} paddingAngle={2}>
                     {pieData.map((e, i) => <Cell key={i} fill={e.color} />)}

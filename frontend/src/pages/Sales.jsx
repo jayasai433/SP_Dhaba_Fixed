@@ -20,8 +20,8 @@ export default function Sales() {
   const [saving, setSaving] = useState(false);
   const [duplicate, setDuplicate] = useState(null);
 
-  const load = () => api.get("/sales").then(({ data }) => setRows(data));
-  useEffect(load, []);
+  const load = () => { api.get("/sales").then(({ data }) => setRows(data)); };
+  useEffect(() => { load(); }, []);
 
   useEffect(() => {
     if (!date) return setDuplicate(null);

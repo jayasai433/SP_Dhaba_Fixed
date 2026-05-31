@@ -25,7 +25,7 @@ export default function Items() {
     api.get("/categories").then(({ data }) => setCategories(data));
     api.get("/units").then(({ data }) => setUnits(data));
   };
-  useEffect(load, []);
+  useEffect(() => { load(); }, []);
 
   const filtered = useMemo(() => items
     .filter((i) => !q || i.name.toLowerCase().includes(q.toLowerCase()))

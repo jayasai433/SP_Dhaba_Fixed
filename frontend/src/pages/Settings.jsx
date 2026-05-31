@@ -101,8 +101,8 @@ function NamedListPane({ apiPath, label, testid }) {
   const [rows, setRows] = useState([]);
   const [name, setName] = useState("");
 
-  const load = () => api.get(apiPath, { params: { include_inactive: true } }).then(({ data }) => setRows(data));
-  useEffect(load, [apiPath]);
+  const load = () => { api.get(apiPath, { params: { include_inactive: true } }).then(({ data }) => setRows(data)); };
+  useEffect(() => { load(); }, [apiPath]);
 
   const add = async () => {
     if (!name.trim()) return;
@@ -151,8 +151,8 @@ function UsersPane() {
   const [form, setForm] = useState({ name: "", email: "", password: "", role: "staff" });
   const [resetPwd, setResetPwd] = useState("");
 
-  const load = () => api.get("/users").then(({ data }) => setUsers(data));
-  useEffect(load, []);
+  const load = () => { api.get("/users").then(({ data }) => setUsers(data)); };
+  useEffect(() => { load(); }, []);
 
   const create = async () => {
     try { await api.post("/users", form); setOpenNew(false); setForm({ name: "", email: "", password: "", role: "staff" }); load(); toast.success("User added"); }

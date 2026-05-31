@@ -25,8 +25,8 @@ export default function DailyUsage() {
     });
   }, []);
 
-  const load = () => api.get("/usage").then(({ data }) => setRows(data));
-  useEffect(load, []);
+  const load = () => { api.get("/usage").then(({ data }) => setRows(data)); };
+  useEffect(() => { load(); }, []);
 
   const addRow = () => setEntries((e) => [...e, { item_id: "", qty: "", notes: "" }]);
   const removeRow = (i) => setEntries((e) => e.filter((_, idx) => idx !== i));

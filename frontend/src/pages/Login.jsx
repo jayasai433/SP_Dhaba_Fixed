@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -20,10 +20,12 @@ export default function Login() {
   const navigate = useNavigate();
   const loc = useLocation();
 
-  if (user) {
-    const to = user.role === "viewer" ? "/display" : (user.role === "staff" ? "/stock" : "/dashboard");
-    navigate(to, { replace: true });
-  }
+  useEffect(() => {
+    if (user) {
+      const to = user.role === "viewer" ? "/display" : (user.role === "staff" ? "/stock" : "/dashboard");
+      navigate(to, { replace: true });
+    }
+  }, [user, navigate]);
 
   const submit = async (e) => {
     e.preventDefault();
