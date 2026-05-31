@@ -115,7 +115,7 @@ export default function Dashboard() {
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie data={pieData} dataKey="value" innerRadius={50} outerRadius={75} paddingAngle={2}>
-                    {pieData.map((e, i) => <Cell key={i} fill={e.color} />)}
+                    {pieData.map((e) => <Cell key={e.name} fill={e.color} />)}
                   </Pie>
                   <Tooltip />
                 </PieChart>

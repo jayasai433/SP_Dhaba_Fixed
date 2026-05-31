@@ -1,0 +1,42 @@
+{
+  "summary": "Verified cookie-based auth migration + seed() refactor + DailyUsage rid fix. Added 12 new pytest cases (TestCookieAuth ×4, TestSeedRefactor ×7, TestCategoryDeactivation ×1) to /app/backend/tests/test_backend.py. All 40 backend tests pass (28 regression + 12 new) in 13.57s. Frontend Playwright run confirms: (a) login stores NO token in localStorage, (b) sessionStorage.sp_user is set with user object, (c) sp_token cookie is set with httpOnly=True / secure=True / sameSite=Lax and is NOT visible via document.cookie, (d) Dashboard loads using cookie auth (Bearer header no longer used), (e) Logout clears sessionStorage and redirects to /login, (f) DailyUsage rid fix — added 3 rows, filled qty/notes 11/row0, 22/row1, 33/row2; after removing row 0 the remaining rows correctly show qty=22/notes=row1 and qty=33/notes=row2 (no input-state shuffle).",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Dashboard charts (Recharts ResponsiveContainer)", "issue": "width(-1)/height(-1) warning still logged 4× on first paint of Dashboard. Same low-priority cosmetic issue carried over from iteration_2/3. Request explicitly says to skip — keeping as known low-priority backlog.", "selector": ".recharts-responsive-container", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_backend.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "None blocking. (Optional carryover) Replace Tailwind h-64 with inline style={{height:256}} on Recharts ResponsiveContainer wrappers to silence width(-1) warning."
+  ],
+  "critical_code_review_comments": [
+    "AUTH OK: get_current_user prefers cookie sp_token then falls back to Authorization Bearer — backward compat for curl/CI preserved (server.py:69-88).",
+    "AUTH OK: /api/auth/login uses response.set_cookie(httponly=True, secure=True, samesite='lax') — matches XSS-safe pattern. Token is still returned in body for legacy tests.",
+    "AUTH OK: /api/auth/logout calls response.delete_cookie — verified cookie cleared on the browser.",
+    "REFACTOR OK: seed() now orchestrates _seed_indexes/_seed_users/_seed_items/_seed_named_list/_seed_business_profile/_seed_payroll_staff/_seed_whatsapp_settings — verified all 33 items, 9 cats, 9 units, 6 expense cats, Lokesh payroll staff, whatsapp_settings doc, and 3 users still seeded.",
+    "BUSINESS LOGIC OK: update_category check uses `update[\"is_active\"] == False` (line 774) — verified blocking deactivation of Dairy (has active items) returns 400.",
+    "FRONTEND OK: api.js uses axios { withCredentials: true } with no Authorization interceptor. AuthContext logout calls POST /api/auth/logout.",
+    "FRONTEND OK: DailyUsage entries use rid: crypto.randomUUID() with removeRow(rid)/updateRow(rid,key,val); React key={r.rid} prevents the index-key state-shuffle bug. Verified empirically.",
+    "MINOR (pre-existing): server.py is 1364 lines — still trending past 700-line guideline. WhatsApp + Scheduler are good candidates for extraction.",
+    "MINOR (pre-existing): /api/expenses POST validates category against db.expense_categories (good!) but /api/categories POST/update does not check unique constraint at DB level — only application-level duplicate check."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_backend.py"
+  ],
+  "success_rate": {
+    "backend": "100% (40/40 tests passed)",
+    "frontend": "100% on targeted flows (login cookie attrs, no localStorage token, sessionStorage user, Dashboard load via cookie, DailyUsage rid removal preserves values, logout clears + redirects)"
+  },
+  "test_credentials": "admin@spdhaba.com / Admin@123, lokesh@spdhaba.com / Staff@123, display@spdhaba.com / View@123 — all verified working",
+  "seed_data_creation": "Test created during this run: a few TEST_Stock_* items + purchases, TEST_EC_*/TEST_EC2_* expense categories, TEST_Staff_*/TEST_Sal_* payroll staff, 3 WhatsApp test numbers, 1 deactivated user, ~3 DailyUsage rows were filled then page navigated away (none submitted).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Cookie-based auth fully verified — backend supports BOTH httpOnly cookie AND Bearer header. test_backend.py uses Bearer for fixtures (still works) and has new TestCookieAuth class using requests.Session() for cookie flow. WhatsApp remains LOG-ONLY by design. Persistent Recharts width(-1) warning is the only known cosmetic carryover and is intentionally skipped per the review request.",
+  "rca of the issue": "No bugs found this iteration. All migration goals met: (1) httpOnly cookie set on login, (2) cookie-only /me works, (3) Bearer-only /me works for CI, (4) logout clears cookie and subsequent /me → 401, (5) seed refactor preserves all default data, (6) category-deactivation business rule still enforced, (7) DailyUsage rid-based row removal no longer shuffles inputs."
+}

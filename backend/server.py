@@ -14,7 +14,7 @@ import httpx
 import io
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Literal
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, status
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import StreamingResponse
 from starlette.middleware.cors import CORSMiddleware
@@ -66,11 +66,18 @@ def create_token(user_id: str, email: str, role: str) -> str:
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGO)
 
-async def get_current_user(creds: HTTPAuthorizationCredentials = Depends(bearer_scheme)):
-    if not creds or not creds.credentials:
+async def get_current_user(
+    request: Request,
+    creds: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+):
+    # Prefer httpOnly cookie (XSS-safe); fall back to Bearer header for API/CLI clients
+    token = request.cookies.get("sp_token")
+    if not token and creds and creds.credentials:
+        token = creds.credentials
+    if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
     try:
-        payload = jwt.decode(creds.credentials, JWT_SECRET, algorithms=[JWT_ALGO])
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGO])
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Session expired")
     except jwt.InvalidTokenError:
@@ -279,26 +286,26 @@ async def ensure_user(email, password, name, role):
         "created_at": iso(now_utc()),
     })
 
-async def seed():
-    # Indexes
+async def _seed_indexes():
     await db.users.create_index("email", unique=True)
     await db.items.create_index([("name", 1)], unique=True)
     await db.purchases.create_index([("date", 1), ("item_id", 1)])
     await db.daily_usage.create_index([("date", 1), ("item_id", 1)])
     await db.sales.create_index("date", unique=True)
+    await db.notifications.create_index([("created_at", -1)])
+    await db.notifications.create_index("status")
 
+async def _seed_users():
     # One-time cleanup of legacy seed accounts (typo'd domain)
     await db.users.delete_many({"email": {"$in": [
         "admin@sprojal.com", "lokesh@sprojal.com", "display@sprojal.com"
     ]}})
-
-    # Users (idempotent — update password if env-changed)
     seeds = [
-        (os.environ.get("ADMIN_EMAIL", "admin@sprojal.com"),
+        (os.environ.get("ADMIN_EMAIL", "admin@spdhaba.com"),
          os.environ.get("ADMIN_PASSWORD", "Admin@123"), "Jaya Sai", "admin"),
-        (os.environ.get("STAFF_EMAIL", "lokesh@sprojal.com"),
+        (os.environ.get("STAFF_EMAIL", "lokesh@spdhaba.com"),
          os.environ.get("STAFF_PASSWORD", "Staff@123"), "Lokesh", "staff"),
-        (os.environ.get("VIEWER_EMAIL", "display@sprojal.com"),
+        (os.environ.get("VIEWER_EMAIL", "display@spdhaba.com"),
          os.environ.get("VIEWER_PASSWORD", "View@123"), "Display", "viewer"),
     ]
     for email, pwd, name, role in seeds:
@@ -309,85 +316,59 @@ async def seed():
             await db.users.update_one({"email": email},
                                       {"$set": {"password_hash": hash_password(pwd)}})
 
-    # Items
+async def _seed_items():
     for name, cat, unit, reorder in SEED_ITEMS:
-        existing = await db.items.find_one({"name": name})
-        if not existing:
+        if not await db.items.find_one({"name": name}):
             await db.items.insert_one({
-                "id": str(uuid.uuid4()),
-                "name": name,
-                "category": cat,
-                "unit": unit,
-                "reorder_level": float(reorder),
-                "is_active": True,
-                "created_at": iso(now_utc()),
-                "updated_at": iso(now_utc()),
+                "id": str(uuid.uuid4()), "name": name, "category": cat, "unit": unit,
+                "reorder_level": float(reorder), "is_active": True,
+                "created_at": iso(now_utc()), "updated_at": iso(now_utc()),
             })
 
-    # Categories
-    for c in DEFAULT_CATEGORIES:
-        if not await db.categories.find_one({"name": c}):
-            await db.categories.insert_one({
-                "id": str(uuid.uuid4()), "name": c, "is_active": True,
-                "created_at": iso(now_utc()),
-            })
+async def _seed_named_list(coll, names):
+    for n in names:
+        if not await coll.find_one({"name": n}):
+            await coll.insert_one({"id": str(uuid.uuid4()), "name": n,
+                                    "is_active": True, "created_at": iso(now_utc())})
 
-    # Units
-    for u in DEFAULT_UNITS:
-        if not await db.units.find_one({"name": u}):
-            await db.units.insert_one({
-                "id": str(uuid.uuid4()), "name": u, "is_active": True,
-                "created_at": iso(now_utc()),
-            })
-
-    # Business Profile
+async def _seed_business_profile():
     if not await db.business_profile.find_one({"key": "main"}):
         await db.business_profile.insert_one({
-            "key": "main",
-            "name": "SP Royal Punjabi Family Dhaba",
-            "address": "",
-            "phone": "",
-            "logo_base64": "",
+            "key": "main", "name": "SP Royal Punjabi Family Dhaba",
+            "address": "", "phone": "", "logo_base64": "",
             "updated_at": iso(now_utc()),
         })
 
-    # Expense categories
-    for c in ["Maintenance", "Utilities", "Rent", "Transport", "Equipment", "Others"]:
-        if not await db.expense_categories.find_one({"name": c}):
-            await db.expense_categories.insert_one({
-                "id": str(uuid.uuid4()), "name": c, "is_active": True,
-                "created_at": iso(now_utc()),
-            })
-
-    # Default staff (Lokesh) for payroll — distinct from login user
+async def _seed_payroll_staff():
     if not await db.staff.find_one({"name": "Lokesh"}):
         await db.staff.insert_one({
-            "id": str(uuid.uuid4()),
-            "name": "Lokesh",
-            "default_salary": 0,
-            "phone": "",
-            "is_active": True,
+            "id": str(uuid.uuid4()), "name": "Lokesh",
+            "default_salary": 0, "phone": "", "is_active": True,
             "created_at": iso(now_utc()),
         })
 
-    # WhatsApp settings (single doc)
+async def _seed_whatsapp_settings():
     if not await db.whatsapp_settings.find_one({"key": "main"}):
         await db.whatsapp_settings.insert_one({
             "key": "main",
-            "notify_out_of_stock": True,
-            "notify_low_stock": True,
-            "notify_large_purchase": True,
-            "large_purchase_threshold": 5000.0,
-            "notify_morning_report": True,
-            "notify_daily_report": True,
-            "notify_no_sales_reminder": True,
-            "notify_daily_loss": True,
+            "notify_out_of_stock": True, "notify_low_stock": True,
+            "notify_large_purchase": True, "large_purchase_threshold": 5000.0,
+            "notify_morning_report": True, "notify_daily_report": True,
+            "notify_no_sales_reminder": True, "notify_daily_loss": True,
             "updated_at": iso(now_utc()),
         })
 
-    # Notification log indexes
-    await db.notifications.create_index([("created_at", -1)])
-    await db.notifications.create_index("status")
+async def seed():
+    await _seed_indexes()
+    await _seed_users()
+    await _seed_items()
+    await _seed_named_list(db.categories, DEFAULT_CATEGORIES)
+    await _seed_named_list(db.units, DEFAULT_UNITS)
+    await _seed_named_list(db.expense_categories,
+                            ["Maintenance", "Utilities", "Rent", "Transport", "Equipment", "Others"])
+    await _seed_business_profile()
+    await _seed_payroll_staff()
+    await _seed_whatsapp_settings()
 
 @app.on_event("startup")
 async def startup():
@@ -401,22 +382,34 @@ async def shutdown():
     client.close()
 
 # ---------------- Auth ----------------
+COOKIE_NAME = "sp_token"
+COOKIE_MAX_AGE = TOKEN_TTL_HOURS * 3600
+
 @api.post("/auth/login")
-async def login(payload: LoginIn):
+async def login(payload: LoginIn, response: Response):
     user = await db.users.find_one({"email": payload.email.lower()})
     if not user or not user.get("is_active", True):
         raise HTTPException(status_code=401, detail="Invalid email or password")
     if not verify_password(payload.password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid email or password")
     token = create_token(user["id"], user["email"], user["role"])
+    response.set_cookie(
+        key=COOKIE_NAME, value=token, max_age=COOKIE_MAX_AGE,
+        httponly=True, secure=True, samesite="lax", path="/",
+    )
     return {
-        "token": token,
+        "token": token,  # kept for curl/tests; browser uses httpOnly cookie
         "user": {
             "id": user["id"], "name": user["name"], "email": user["email"],
             "role": user["role"], "is_active": user["is_active"],
             "created_at": user["created_at"],
         }
     }
+
+@api.post("/auth/logout")
+async def logout(response: Response):
+    response.delete_cookie(key=COOKIE_NAME, path="/")
+    return {"ok": True}
 
 @api.get("/auth/me")
 async def me(user=Depends(get_current_user)):
@@ -778,7 +771,7 @@ async def create_category(payload: CategoryIn, user=Depends(require_roles("admin
 @api.patch("/categories/{cat_id}")
 async def update_category(cat_id: str, payload: dict, user=Depends(require_roles("admin"))):
     update = {k: v for k, v in payload.items() if k in ("name", "is_active") and v is not None}
-    if "is_active" in update and update["is_active"] is False:
+    if "is_active" in update and update["is_active"] == False:
         # ensure no active items use this category
         cat = await db.categories.find_one({"id": cat_id})
         if cat:

@@ -3,13 +3,10 @@ import axios from "axios";
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 export const API = `${BACKEND_URL}/api`;
 
-const api = axios.create({ baseURL: API });
-
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("sp_token");
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
+// withCredentials sends/receives the httpOnly auth cookie. Token is no longer
+// stored in localStorage (XSS-safe). User profile is kept in sessionStorage
+// only for fast UI hydration; it carries no secret.
+const api = axios.create({ baseURL: API, withCredentials: true });
 
 api.interceptors.response.use(
   (r) => r,
@@ -17,8 +14,7 @@ api.interceptors.response.use(
     if (err.response?.status === 401) {
       const path = window.location.pathname;
       if (path !== "/login") {
-        localStorage.removeItem("sp_token");
-        localStorage.removeItem("sp_user");
+        sessionStorage.removeItem("sp_user");
         window.location.href = "/login";
       }
     }

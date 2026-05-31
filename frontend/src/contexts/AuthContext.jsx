@@ -3,24 +3,23 @@ import api from "@/lib/api";
 
 const AuthContext = createContext(null);
 
+// Auth token is in an httpOnly cookie (XSS-safe). User profile is mirrored to
+// sessionStorage only for fast first-paint; it contains no secret material.
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => {
-    const raw = localStorage.getItem("sp_user");
+    const raw = sessionStorage.getItem("sp_user");
     return raw ? JSON.parse(raw) : null;
   });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const token = localStorage.getItem("sp_token");
-    if (!token) { setLoading(false); return; }
     api.get("/auth/me")
       .then(({ data }) => {
         setUser(data);
-        localStorage.setItem("sp_user", JSON.stringify(data));
+        sessionStorage.setItem("sp_user", JSON.stringify(data));
       })
       .catch(() => {
-        localStorage.removeItem("sp_token");
-        localStorage.removeItem("sp_user");
+        sessionStorage.removeItem("sp_user");
         setUser(null);
       })
       .finally(() => setLoading(false));
@@ -28,15 +27,15 @@ export function AuthProvider({ children }) {
 
   const login = async (email, password) => {
     const { data } = await api.post("/auth/login", { email, password });
-    localStorage.setItem("sp_token", data.token);
-    localStorage.setItem("sp_user", JSON.stringify(data.user));
+    // Browser stored the httpOnly cookie automatically via Set-Cookie header.
+    sessionStorage.setItem("sp_user", JSON.stringify(data.user));
     setUser(data.user);
     return data.user;
   };
 
-  const logout = () => {
-    localStorage.removeItem("sp_token");
-    localStorage.removeItem("sp_user");
+  const logout = async () => {
+    try { await api.post("/auth/logout"); } catch { /* ignore */ }
+    sessionStorage.removeItem("sp_user");
     setUser(null);
     window.location.href = "/login";
   };

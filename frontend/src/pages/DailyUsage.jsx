@@ -15,7 +15,7 @@ export default function DailyUsage() {
   const [stockMap, setStockMap] = useState({});
   const [rows, setRows] = useState([]);
   const [date, setDate] = useState(todayIST());
-  const [entries, setEntries] = useState([{ item_id: "", qty: "", notes: "" }]);
+  const [entries, setEntries] = useState([{ rid: crypto.randomUUID(), item_id: "", qty: "", notes: "" }]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -28,10 +28,10 @@ export default function DailyUsage() {
   const load = () => { api.get("/usage").then(({ data }) => setRows(data)); };
   useEffect(() => { load(); }, []);
 
-  const addRow = () => setEntries((e) => [...e, { item_id: "", qty: "", notes: "" }]);
-  const removeRow = (i) => setEntries((e) => e.filter((_, idx) => idx !== i));
-  const updateRow = (i, key, val) =>
-    setEntries((e) => e.map((r, idx) => (idx === i ? { ...r, [key]: val } : r)));
+  const addRow = () => setEntries((e) => [...e, { rid: crypto.randomUUID(), item_id: "", qty: "", notes: "" }]);
+  const removeRow = (rid) => setEntries((e) => e.filter((r) => r.rid !== rid));
+  const updateRow = (rid, key, val) =>
+    setEntries((e) => e.map((r) => (r.rid === rid ? { ...r, [key]: val } : r)));
 
   const submit = async (e) => {
     e.preventDefault();
@@ -56,7 +56,7 @@ export default function DailyUsage() {
         });
       }
       toast.success(`${valid.length} usage entr${valid.length === 1 ? "y" : "ies"} saved`);
-      setEntries([{ item_id: "", qty: "", notes: "" }]);
+      setEntries([{ rid: crypto.randomUUID(), item_id: "", qty: "", notes: "" }]);
       load();
       api.get("/stock").then(({ data }) => setStockMap(Object.fromEntries(data.map((s) => [s.item_id, s.qty_left]))));
     } catch (err) { toast.error(formatApiError(err)); }
@@ -89,10 +89,10 @@ export default function DailyUsage() {
                 const left = it ? stockMap[r.item_id] ?? 0 : null;
                 const exceeds = it && parseFloat(r.qty || 0) > (stockMap[r.item_id] ?? 0);
                 return (
-                  <div key={i} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-end p-3 rounded-xl bg-orange-50/40 border border-orange-100">
+                  <div key={r.rid} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-end p-3 rounded-xl bg-orange-50/40 border border-orange-100">
                     <div className="md:col-span-4">
                       <Label className="text-xs mb-1 block">Item</Label>
-                      <Select value={r.item_id} onValueChange={(v) => updateRow(i, "item_id", v)}>
+                      <Select value={r.item_id} onValueChange={(v) => updateRow(r.rid, "item_id", v)}>
                         <SelectTrigger data-testid={`usage-item-${i}`} className="h-11 bg-white"><SelectValue placeholder="Select item" /></SelectTrigger>
                         <SelectContent>
                           {activeItems.map((it) => <SelectItem key={it.id} value={it.id}>{it.name}</SelectItem>)}
@@ -103,15 +103,15 @@ export default function DailyUsage() {
                     <div className="md:col-span-2">
                       <Label className="text-xs mb-1 block">Qty {it && `(${it.unit})`}</Label>
                       <Input type="number" step="0.01" min="0" data-testid={`usage-qty-${i}`}
-                        value={r.qty} onChange={(e) => updateRow(i, "qty", e.target.value)} className="h-11 bg-white tabular-nums" />
+                        value={r.qty} onChange={(e) => updateRow(r.rid, "qty", e.target.value)} className="h-11 bg-white tabular-nums" />
                     </div>
                     <div className="md:col-span-5">
                       <Label className="text-xs mb-1 block">Notes (optional)</Label>
-                      <Input data-testid={`usage-notes-${i}`} value={r.notes} onChange={(e) => updateRow(i, "notes", e.target.value)} className="h-11 bg-white" />
+                      <Input data-testid={`usage-notes-${i}`} value={r.notes} onChange={(e) => updateRow(r.rid, "notes", e.target.value)} className="h-11 bg-white" />
                     </div>
                     <div className="md:col-span-1 flex justify-end">
                       {entries.length > 1 && (
-                        <Button type="button" variant="ghost" onClick={() => removeRow(i)} className="h-11 w-11 p-0 text-red-600 hover:bg-red-50" data-testid={`usage-remove-${i}`}>
+                        <Button type="button" variant="ghost" onClick={() => removeRow(r.rid)} className="h-11 w-11 p-0 text-red-600 hover:bg-red-50" data-testid={`usage-remove-${i}`}>
                           <X size={18} />
                         </Button>
                       )}

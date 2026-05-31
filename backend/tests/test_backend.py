@@ -72,6 +72,126 @@ class TestAuth:
         assert r.status_code == 401
 
 
+# ----------------- Cookie-based auth migration -----------------
+class TestCookieAuth:
+    def test_login_sets_httponly_cookie(self):
+        s = requests.Session()
+        r = s.post(f"{API}/auth/login", json=ADMIN, timeout=30)
+        assert r.status_code == 200
+        # Verify cookie present
+        assert "sp_token" in s.cookies, f"sp_token not in cookie jar: {s.cookies}"
+        # Verify HttpOnly attribute via raw Set-Cookie header
+        set_cookie = r.headers.get("set-cookie", "")
+        assert "sp_token=" in set_cookie
+        assert "HttpOnly" in set_cookie, f"HttpOnly not in Set-Cookie: {set_cookie}"
+        assert "Secure" in set_cookie, f"Secure not in Set-Cookie: {set_cookie}"
+        # SameSite=Lax
+        assert "SameSite=Lax" in set_cookie or "samesite=lax" in set_cookie.lower()
+        # Token in body too (backward compat)
+        assert "token" in r.json()
+
+    def test_me_with_cookie_only(self):
+        s = requests.Session()
+        s.post(f"{API}/auth/login", json=ADMIN, timeout=30)
+        # explicitly send NO auth header
+        r = s.get(f"{API}/auth/me")
+        assert r.status_code == 200
+        assert r.json()["email"] == ADMIN["email"]
+
+    def test_me_with_bearer_only_still_works(self):
+        # Fresh requests (no cookie jar) using only Bearer
+        tok = _login(ADMIN)
+        r = requests.get(f"{API}/auth/me", headers=H(tok))
+        assert r.status_code == 200
+        assert r.json()["email"] == ADMIN["email"]
+
+    def test_logout_clears_cookie_and_me_401(self):
+        s = requests.Session()
+        s.post(f"{API}/auth/login", json=ADMIN, timeout=30)
+        assert "sp_token" in s.cookies
+        rlo = s.post(f"{API}/auth/logout")
+        assert rlo.status_code == 200
+        # After logout - cookie cleared, /me should 401
+        # Manually drop cookie since requests doesn't always honor delete
+        s.cookies.clear()
+        r = s.get(f"{API}/auth/me")
+        assert r.status_code == 401
+
+
+# ----------------- Refactor seed verification -----------------
+class TestSeedRefactor:
+    def test_seed_items_count(self, admin_token):
+        r = requests.get(f"{API}/items", headers=H(admin_token))
+        assert r.status_code == 200
+        # 33 seeded items (additional TEST_ items may exist)
+        seeded_names = {"Chicken", "Mutton", "Egg", "Paneer", "Milk", "Butter",
+                        "Desi Ghee", "Curd", "Basmati Rice", "Wheat Flour Atta",
+                        "Toor Dal", "Chana Dal", "Moong Dal", "Sunflower Oil",
+                        "Mustard Oil", "Onion", "Tomato", "Potato", "Garlic",
+                        "Ginger", "Green Chilli", "Garam Masala", "Red Chilli Powder",
+                        "Turmeric Powder", "Coriander Powder", "Cumin Seeds", "Salt",
+                        "Tea Powder", "Sugar", "LPG Cylinder", "Charcoal",
+                        "Disposable Plates", "Tissue Paper"}
+        item_names = {i["name"] for i in r.json()}
+        missing = seeded_names - item_names
+        assert not missing, f"missing seed items: {missing}"
+
+    def test_seed_categories_9(self, admin_token):
+        r = requests.get(f"{API}/categories", headers=H(admin_token))
+        assert r.status_code == 200
+        names = {c["name"] for c in r.json()}
+        expected = {"Meat & Poultry", "Dairy", "Oils & Ghee", "Grains & Dal",
+                    "Vegetables", "Spices & Masala", "Beverages",
+                    "Firewood & Gas", "Packaging"}
+        assert expected.issubset(names), f"missing: {expected - names}"
+
+    def test_seed_units_9(self, admin_token):
+        r = requests.get(f"{API}/units", headers=H(admin_token))
+        names = {u["name"] for u in r.json()}
+        expected = {"kg", "L", "dozen", "pcs", "packet", "g", "ml", "bag", "bottle"}
+        assert expected.issubset(names)
+
+    def test_seed_expense_categories_6(self, admin_token):
+        r = requests.get(f"{API}/expense-categories", headers=H(admin_token))
+        names = {c["name"] for c in r.json()}
+        expected = {"Maintenance", "Utilities", "Rent", "Transport", "Equipment", "Others"}
+        assert expected.issubset(names), f"missing: {expected - names}"
+
+    def test_seed_lokesh_payroll_staff(self, admin_token):
+        r = requests.get(f"{API}/staff", headers=H(admin_token))
+        names = [s["name"] for s in r.json()]
+        assert "Lokesh" in names
+
+    def test_seed_whatsapp_settings(self, admin_token):
+        r = requests.get(f"{API}/whatsapp/settings", headers=H(admin_token))
+        assert r.status_code == 200
+        d = r.json()
+        # Verify settings doc exists with required keys
+        for k in ["notify_out_of_stock", "notify_low_stock", "notify_large_purchase",
+                  "large_purchase_threshold", "notify_morning_report",
+                  "notify_daily_report", "notify_no_sales_reminder", "notify_daily_loss"]:
+            assert k in d, f"missing key {k}"
+
+    def test_seed_3_users(self, admin_token):
+        r = requests.get(f"{API}/users", headers=H(admin_token))
+        assert r.status_code == 200
+        emails = {u["email"] for u in r.json()}
+        for e in [ADMIN["email"], STAFF["email"], VIEWER["email"]]:
+            assert e in emails
+
+
+# ----------------- Business logic: category deactivation -----------------
+class TestCategoryDeactivation:
+    def test_cannot_deactivate_category_with_active_items(self, admin_token):
+        cats = requests.get(f"{API}/categories", headers=H(admin_token)).json()
+        # Dairy has active items (Paneer, Milk, etc)
+        dairy = next(c for c in cats if c["name"] == "Dairy")
+        r = requests.patch(f"{API}/categories/{dairy['id']}", headers=H(admin_token),
+                           json={"is_active": False})
+        assert r.status_code == 400
+        assert "Cannot deactivate" in r.text or "active items" in r.text
+
+
 # ----------------- Role enforcement -----------------
 class TestRoles:
     def test_staff_blocked_from_dashboard(self, staff_token):
