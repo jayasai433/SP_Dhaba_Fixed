@@ -1,0 +1,161 @@
+{
+  "theme_and_archetype": {
+    "theme": "light",
+    "archetype": "Organic & Earthy (1) blended with Swiss & High-Contrast (4)",
+    "description": "A lightweight ERP that feels like a modern operational control room but retains the warmth of a Punjabi Dhaba. It bridges high-density data display with approachable, tactile interactions for non-tech-savvy staff."
+  },
+  "typography": {
+    "fonts": {
+      "headings": "Poppins",
+      "body": "Inter"
+    },
+    "hierarchy": {
+      "h1": "text-3xl sm:text-4xl font-bold tracking-tight text-slate-900",
+      "h2": "text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900",
+      "h3": "text-xl sm:text-2xl font-medium tracking-tight text-slate-800",
+      "h4": "text-lg font-medium text-slate-800",
+      "body": "text-sm sm:text-base text-slate-600 leading-relaxed",
+      "kpi_value": "text-4xl sm:text-5xl font-bold tracking-tighter text-orange-600 font-poppins",
+      "label": "text-xs font-semibold tracking-widest uppercase text-slate-500"
+    },
+    "rules": [
+      "Never use pure black for text. Use slate-900 or slate-800.",
+      "Data tables must use tabular-nums utility for aligned digits.",
+      "Headlines (Poppins) must be tightly tracked."
+    ]
+  },
+  "colors": {
+    "background": {
+      "base": "#FFF8F0",
+      "surface": "#FFFFFF",
+      "surface_hover": "#FFF0E0"
+    },
+    "primary": {
+      "DEFAULT": "#E65C00",
+      "hover": "#CC5200",
+      "light": "#FFE6D6",
+      "dark": "#993D00"
+    },
+    "secondary": {
+      "DEFAULT": "#D4A017",
+      "hover": "#B38613",
+      "light": "#FFF3D4"
+    },
+    "sidebar": {
+      "bg": "#2D1606",
+      "text": "#FFFFFF",
+      "text_muted": "#A89488",
+      "active_bg": "#4A2511"
+    },
+    "status": {
+      "success": "#2E7D32",
+      "success_bg": "#E8F5E9",
+      "warning": "#F57F17",
+      "warning_bg": "#FFFDE7",
+      "danger": "#C62828",
+      "danger_bg": "#FFEBEE"
+    },
+    "text": {
+      "main": "#0F172A",
+      "muted": "#64748B",
+      "inverse": "#FFFFFF"
+    },
+    "border": "#F0E1D3"
+  },
+  "spacing_and_layout": {
+    "strategy": "Mobile-first, bottom-nav centric for operators. Desktop sidebar for admin.",
+    "grid": {
+      "mobile": "grid-cols-1 gap-4",
+      "desktop_dashboard": "grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6"
+    },
+    "padding": {
+      "page_mobile": "px-4 py-6 pb-24",
+      "page_desktop": "p-8",
+      "card": "p-5 sm:p-6"
+    },
+    "rules": [
+      "Bottom padding on mobile must account for the fixed bottom navigation (pb-24).",
+      "Containers with borders must use internal padding.",
+      "Use optical alignment for icons within buttons."
+    ]
+  },
+  "components": {
+    "buttons": {
+      "primary": "bg-orange-600 text-white hover:bg-orange-700 rounded-full font-medium transition-all shadow-sm shadow-orange-600/20 active:scale-95",
+      "secondary": "bg-amber-100 text-amber-900 hover:bg-amber-200 rounded-full font-medium transition-all active:scale-95",
+      "outline": "border border-orange-200 text-orange-700 hover:bg-orange-50 rounded-full font-medium transition-all"
+    },
+    "cards": {
+      "default": "bg-white rounded-2xl border border-orange-900/10 shadow-sm",
+      "stock_green": "bg-[#E8F5E9] rounded-2xl border border-[#2E7D32]/20 shadow-sm",
+      "stock_yellow": "bg-[#FFFDE7] rounded-2xl border border-[#F57F17]/20 shadow-sm",
+      "stock_red": "bg-[#FFEBEE] rounded-2xl border border-[#C62828]/20 shadow-sm"
+    },
+    "forms": {
+      "input": "rounded-lg border-orange-900/15 focus:border-orange-600 focus:ring-1 focus:ring-orange-600/50 bg-white shadow-sm h-12 text-base",
+      "label": "text-sm font-medium text-slate-700 mb-1.5 block"
+    },
+    "navigation": {
+      "mobile_bottom_bar": "fixed bottom-0 w-full bg-white/90 backdrop-blur-xl border-t border-orange-900/10 h-16 flex items-center justify-around px-2 z-50",
+      "desktop_sidebar": "fixed left-0 top-0 h-screen w-64 bg-[#2D1606] text-white p-4 flex flex-col gap-2 z-50 transition-transform"
+    },
+    "toast": "Use Sonner with rich colors enabled for clear success/error states."
+  },
+  "animations": {
+    "hover": "transition-all duration-200 ease-in-out",
+    "page_load": "animate-in fade-in slide-in-from-bottom-4 duration-500",
+    "staggered_list": "Framer motion staggered children for table rows and stock cards.",
+    "rules": [
+      "Keep animations fast (under 300ms) to not slow down operations.",
+      "Use tactile active states (active:scale-95) for all primary buttons."
+    ]
+  },
+  "media_and_icons": {
+    "icon_library": "lucide-react",
+    "images": {
+      "login_bg": {
+        "url": "https://static.prod-images.emergentagent.com/jobs/f68fc50c-9f59-4269-9dfe-a9e0ce5b55d2/images/919311037b7ede6c209aa3ca33ec36a221357d00035ce1a4bed257be277dedcc.png",
+        "description": "High-end cinematic photo of a modern Dhaba. Use for login background and Display Mode holding screen."
+      },
+      "texture_bg": {
+        "url": "https://static.prod-images.emergentagent.com/jobs/f68fc50c-9f59-4269-9dfe-a9e0ce5b55d2/images/5500d793aa1f9b208fca21ee0a9a9b7de948a74ffd2094dce95e1c2ad855eadd.png",
+        "description": "Subtle sandstone texture for dashboard background."
+      },
+      "empty_state_spices": {
+        "url": "https://static.prod-images.emergentagent.com/jobs/f68fc50c-9f59-4269-9dfe-a9e0ce5b55d2/images/85faf5017d9744a2620bfbccde28cc9e40b94172b9e973a13d3b991eec88e9b6.png",
+        "description": "Rich Indian spices. Use for empty states (e.g. no inventory found, no purchases today)."
+      }
+    }
+  },
+  "pages_and_features": {
+    "dashboard_summary": {
+      "layout": "Bento Grid (Control Room Mode). Dense data.",
+      "elements": "Top row KPIs (Today's Sales, Purchases, Alerts), Recharts Line chart for Sales Trend, Donut chart for Menu Mix."
+    },
+    "live_stock": {
+      "layout": "Responsive grid of compact cards.",
+      "elements": "Color-coded stock cards. Green = Safe, Yellow = Low, Red = Out. Fast search bar at top."
+    },
+    "data_entry_forms": {
+      "layout": "Vertical stacked fields for mobile ease. Running totals sticky at the bottom or top.",
+      "elements": "Multi-item dynamic list entry for Usage and Purchases. Auto-calculating ₹ totals."
+    },
+    "display_mode": {
+      "layout": "Full-screen TV mode. High contrast.",
+      "elements": "Darker background, large text, rotating views of Live Stock and Today's Sales."
+    }
+  },
+  "testing": {
+    "attributes": "All interactive elements MUST have a data-testid attribute formatted as kebab-case and role-based."
+  },
+  "instructions_to_main_agent": [
+    "Install lucide-react and configure Tailwind with the provided color hex codes.",
+    "Use Poppins for headings and Inter for body text via Google Fonts.",
+    "Implement a responsive layout: Bottom navigation bar for mobile (<768px), and fixed left sidebar for desktop.",
+    "Set the app background to #FFF8F0. Add subtle shadow to white cards.",
+    "Ensure all data entries for currency prefix with '₹'.",
+    "Format dates strictly as DD-MMM-YYYY.",
+    "Use color-coded cards for Live Stock as defined in the components section.",
+    "Ensure Shadcn components are heavily customized: remove vercel-like sharp/small radii. Use rounded-2xl for cards and rounded-full for primary buttons."
+  ]
+}
