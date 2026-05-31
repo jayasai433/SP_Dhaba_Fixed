@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
-import api from "@/lib/api";
+import api, { formatApiError } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -7,12 +7,15 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
-import { inr, fmtDate, todayIST } from "@/lib/format";
-import { Plus, Receipt, Wallet } from "lucide-react";
+import { inr, fmtDate, fmtTimestamp, todayIST } from "@/lib/format";
+import { Plus, Receipt, Wallet, Ban } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 import { useSave } from "@/hooks/useSave";
 import { useDateFilter } from "@/hooks/useDateFilter";
 
 export default function Expenses() {
+  const { user } = useAuth();
+  const canAdd = ["admin", "staff"].includes(user.role);
   const [cats, setCats] = useState([]);
   const [rows, setRows] = useState([]);
   const [date, setDate] = useState(todayIST());
@@ -39,6 +42,16 @@ export default function Expenses() {
     if (!cat) return toast.error("Select a category");
     if (!(parseFloat(amt) > 0)) return toast.error("Amount must be greater than 0");
     save();
+  };
+
+  const voidRow = async (id) => {
+    const reason = window.prompt("Reason for voiding this entry (required):");
+    if (!reason?.trim()) return;
+    try {
+      await api.patch(`/expenses/${id}/void`, { reason: reason.trim() });
+      toast.success("Entry voided");
+      load();
+    } catch (err) { toast.error(formatApiError(err)); }
   };
 
   const { dayTotal, weekTotal, monthTotal } = useMemo(() => {
@@ -154,6 +167,8 @@ export default function Expenses() {
                     <TableHead>Description</TableHead>
                     <TableHead className="text-right">Amount</TableHead>
                     <TableHead>By</TableHead>
+                    <TableHead>Logged at</TableHead>
+                    {canAdd && <TableHead></TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -164,6 +179,15 @@ export default function Expenses() {
                       <TableCell className="text-slate-500">{r.description || "—"}</TableCell>
                       <TableCell className="text-right tabular-nums font-semibold">{inr(r.amount)}</TableCell>
                       <TableCell className="text-xs text-slate-500">{r.created_by_name}</TableCell>
+                      <TableCell className="text-xs text-slate-400 tabular-nums whitespace-nowrap">{fmtTimestamp(r.created_at)}</TableCell>
+                      {canAdd && (
+                        <TableCell>
+                          <button title="Void this entry" onClick={() => voidRow(r.id)}
+                            className="text-red-400 hover:text-red-600 transition-colors" data-testid={`void-expense-${r.id}`}>
+                            <Ban size={15} />
+                          </button>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>

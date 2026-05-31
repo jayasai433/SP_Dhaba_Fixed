@@ -533,7 +533,8 @@ async def list_purchases(start: Optional[str] = None, end: Optional[str] = None,
     if item_id: q["item_id"] = item_id
     if user["role"] == "staff":
         q["created_by"] = user["id"]
-    docs = await db.purchases.find(q, {"_id": 0}).sort("date", -1).to_list(2000)
+    q["is_void"] = {"$ne": True}   # exclude voided by default
+    docs = await db.purchases.find(q, {"_id": 0}).sort("created_at", -1).to_list(2000)
     # enrich with item info
     items = {i["id"]: i for i in await db.items.find({}, {"_id": 0}).to_list(2000)}
     for d in docs:
@@ -541,13 +542,24 @@ async def list_purchases(start: Optional[str] = None, end: Optional[str] = None,
         d["item_name"] = it.get("name", "Unknown")
         d["category"] = it.get("category", "")
         d["unit"] = it.get("unit", "")
-    return docs
+    return docss
 
 @api.post("/purchases")
 async def create_purchase(payload: PurchaseIn, user=Depends(require_roles("admin", "staff"))):
     item = await db.items.find_one({"id": payload.item_id})
     if not item:
         raise HTTPException(400, "Item not found")
+    # Duplicate time-window check (10s) — catches double-submit
+    window_start = iso(datetime.now(timezone.utc) - timedelta(seconds=10))
+    dup = await db.purchases.find_one({
+        "item_id": payload.item_id,
+        "date": payload.date,
+        "quantity": float(payload.quantity),
+        "is_void": False,
+        "created_at": {"$gte": window_start},
+    })
+    if dup:
+        raise HTTPException(409, "Duplicate entry detected — same item and quantity logged within the last 10 seconds.")
     doc = {
         "id": str(uuid.uuid4()),
         "item_id": payload.item_id,
@@ -557,6 +569,11 @@ async def create_purchase(payload: PurchaseIn, user=Depends(require_roles("admin
         "total_cost": round(float(payload.quantity) * float(payload.price_per_unit), 2),
         "created_by": user["id"],
         "created_by_name": user["name"],
+        "created_at": iso(now_utc()),
+        "is_void": False,
+        "voided_by": None,
+        "voided_at": None,
+        "void_reason": None,
         "created_at": iso(now_utc()),
     }
     await db.purchases.insert_one(doc)
@@ -573,7 +590,8 @@ async def list_usage(start: Optional[str] = None, end: Optional[str] = None,
     if item_id: q["item_id"] = item_id
     if user["role"] == "staff":
         q["created_by"] = user["id"]
-    docs = await db.daily_usage.find(q, {"_id": 0}).sort("date", -1).to_list(2000)
+    q["is_void"] = {"$ne": True}   # exclude voided by default
+    docs = await db.daily_usage.find(q, {"_id": 0}).sort("created_at", -1).to_list(2000)
     items = {i["id"]: i for i in await db.items.find({}, {"_id": 0}).to_list(2000)}
     for d in docs:
         it = items.get(d["item_id"], {})
@@ -587,6 +605,17 @@ async def create_usage(payload: UsageIn, user=Depends(require_roles("admin", "st
     item = await db.items.find_one({"id": payload.item_id})
     if not item:
         raise HTTPException(400, "Item not found")
+    # Duplicate time-window check (10s)
+    window_start = iso(datetime.now(timezone.utc) - timedelta(seconds=10))
+    dup = await db.daily_usage.find_one({
+        "item_id": payload.item_id,
+        "date": payload.date,
+        "quantity_used": float(payload.quantity_used),
+        "is_void": False,
+        "created_at": {"$gte": window_start},
+    })
+    if dup:
+        raise HTTPException(409, "Duplicate entry detected — same item and quantity logged within the last 10 seconds.")
     doc = {
         "id": str(uuid.uuid4()),
         "item_id": payload.item_id,
@@ -596,6 +625,10 @@ async def create_usage(payload: UsageIn, user=Depends(require_roles("admin", "st
         "created_by": user["id"],
         "created_by_name": user["name"],
         "created_at": iso(now_utc()),
+        "is_void": False,
+        "voided_by": None,
+        "voided_at": None,
+        "void_reason": None,
     }
     await db.daily_usage.insert_one(doc)
     doc.pop("_id", None)
@@ -612,6 +645,7 @@ async def list_sales(start: Optional[str] = None, end: Optional[str] = None,
     if user["role"] == "staff":
         q["created_by"] = user["id"]
     docs = await db.sales.find(q, {"_id": 0}).sort("date", -1).to_list(2000)
+    # ensure created_at present for display
     return docs
 
 @api.post("/sales")
@@ -642,14 +676,85 @@ async def check_sales(date: str, user=Depends(get_current_user)):
     return {"exists": exists is not None, "entry": exists}
 
 # ---------------- Stock View ----------------
+
+# ── Void / wrong-entry correction endpoints ────────────────────────────────
+
+class VoidIn(BaseModel):
+    reason: str
+
+@api.patch("/purchases/{purchase_id}/void")
+async def void_purchase(purchase_id: str, payload: VoidIn, user=Depends(get_current_user)):
+    doc = await db.purchases.find_one({"id": purchase_id})
+    if not doc:
+        raise HTTPException(404, "Purchase not found")
+    if doc.get("is_void"):
+        raise HTTPException(409, "Already voided")
+    if user["role"] == "staff":
+        if doc["created_by"] != user["id"]:
+            raise HTTPException(403, "Staff can only void their own entries")
+        created = datetime.fromisoformat(doc["created_at"].replace("Z", "+00:00"))
+        if (datetime.now(timezone.utc) - created).total_seconds() > 86400:
+            raise HTTPException(403, "Staff can only void entries made today")
+    if not payload.reason.strip():
+        raise HTTPException(400, "Void reason is required")
+    await db.purchases.update_one({"id": purchase_id}, {"$set": {
+        "is_void": True, "voided_by": user["name"],
+        "voided_at": iso(now_utc()), "void_reason": payload.reason.strip()
+    }})
+    return {"voided": True}
+
+@api.patch("/usage/{usage_id}/void")
+async def void_usage(usage_id: str, payload: VoidIn, user=Depends(get_current_user)):
+    doc = await db.daily_usage.find_one({"id": usage_id})
+    if not doc:
+        raise HTTPException(404, "Usage entry not found")
+    if doc.get("is_void"):
+        raise HTTPException(409, "Already voided")
+    if user["role"] == "staff":
+        if doc["created_by"] != user["id"]:
+            raise HTTPException(403, "Staff can only void their own entries")
+        created = datetime.fromisoformat(doc["created_at"].replace("Z", "+00:00"))
+        if (datetime.now(timezone.utc) - created).total_seconds() > 86400:
+            raise HTTPException(403, "Staff can only void entries made today")
+    if not payload.reason.strip():
+        raise HTTPException(400, "Void reason is required")
+    await db.daily_usage.update_one({"id": usage_id}, {"$set": {
+        "is_void": True, "voided_by": user["name"],
+        "voided_at": iso(now_utc()), "void_reason": payload.reason.strip()
+    }})
+    return {"voided": True}
+
+@api.patch("/expenses/{expense_id}/void")
+async def void_expense(expense_id: str, payload: VoidIn, user=Depends(get_current_user)):
+    doc = await db.expenses.find_one({"id": expense_id})
+    if not doc:
+        raise HTTPException(404, "Expense not found")
+    if doc.get("is_void"):
+        raise HTTPException(409, "Already voided")
+    if user["role"] == "staff":
+        if doc["created_by"] != user["id"]:
+            raise HTTPException(403, "Staff can only void their own entries")
+        created = datetime.fromisoformat(doc["created_at"].replace("Z", "+00:00"))
+        if (datetime.now(timezone.utc) - created).total_seconds() > 86400:
+            raise HTTPException(403, "Staff can only void entries made today")
+    if not payload.reason.strip():
+        raise HTTPException(400, "Void reason is required")
+    await db.expenses.update_one({"id": expense_id}, {"$set": {
+        "is_void": True, "voided_by": user["name"],
+        "voided_at": iso(now_utc()), "void_reason": payload.reason.strip()
+    }})
+    return {"voided": True}
+
 @api.get("/stock")
 async def get_stock(user=Depends(get_current_user)):
     items = await db.items.find({}, {"_id": 0}).to_list(2000)
     # aggregate purchases
     p_agg = await db.purchases.aggregate([
+        {"$match": {"is_void": {"$ne": True}}},
         {"$group": {"_id": "$item_id", "total": {"$sum": "$quantity"}}}
     ]).to_list(5000)
     u_agg = await db.daily_usage.aggregate([
+        {"$match": {"is_void": {"$ne": True}}},
         {"$group": {"_id": "$item_id", "total": {"$sum": "$quantity_used"}}}
     ]).to_list(5000)
     p_map = {x["_id"]: x["total"] for x in p_agg}
@@ -684,9 +789,9 @@ async def get_alerts(user=Depends(get_current_user)):
 # ---------------- Dashboard ----------------
 @api.get("/dashboard")
 async def dashboard(user=Depends(require_roles("admin", "viewer"))):
-    purchases = await db.purchases.find({}, {"_id": 0}).to_list(5000)
+    purchases = await db.purchases.find({"is_void": {"$ne": True}}, {"_id": 0}).to_list(5000)
     sales = await db.sales.find({}, {"_id": 0}).to_list(5000)
-    expenses_docs = await db.expenses.find({}, {"_id": 0}).to_list(5000)
+    expenses_docs = await db.expenses.find({"is_void": {"$ne": True}}, {"_id": 0}).to_list(5000)
     salary_docs = await db.salaries.find({}, {"_id": 0}).to_list(5000)
     items = {i["id"]: i for i in await db.items.find({}, {"_id": 0}).to_list(2000)}
 
@@ -864,7 +969,8 @@ async def list_expenses(start: Optional[str] = None, end: Optional[str] = None,
     if category: q["category"] = category
     if user["role"] == "staff":
         q["created_by"] = user["id"]
-    docs = await db.expenses.find(q, {"_id": 0}).sort("date", -1).to_list(2000)
+    q["is_void"] = {"$ne": True}   # exclude voided by default
+    docs = await db.expenses.find(q, {"_id": 0}).sort("created_at", -1).to_list(2000)
     return docs
 
 @api.post("/expenses")
@@ -872,6 +978,17 @@ async def create_expense(payload: ExpenseIn, user=Depends(require_roles("admin",
     cat = await db.expense_categories.find_one({"name": payload.category, "is_active": True})
     if not cat:
         raise HTTPException(400, "Invalid or inactive expense category")
+    # Duplicate time-window check (10s)
+    window_start = iso(datetime.now(timezone.utc) - timedelta(seconds=10))
+    dup = await db.expenses.find_one({
+        "date": payload.date,
+        "category": payload.category,
+        "amount": float(payload.amount),
+        "is_void": False,
+        "created_at": {"$gte": window_start},
+    })
+    if dup:
+        raise HTTPException(409, "Duplicate entry detected — same category and amount logged within the last 10 seconds.")
     doc = {
         "id": str(uuid.uuid4()),
         "date": payload.date,
@@ -881,6 +998,10 @@ async def create_expense(payload: ExpenseIn, user=Depends(require_roles("admin",
         "created_by": user["id"],
         "created_by_name": user["name"],
         "created_at": iso(now_utc()),
+        "is_void": False,
+        "voided_by": None,
+        "voided_at": None,
+        "void_reason": None,
     }
     await db.expenses.insert_one(doc)
     doc.pop("_id", None)
@@ -1007,9 +1128,9 @@ async def _compute_pnl(start: Optional[str], end: Optional[str]):
         if start and d < start: return False
         if end and d > end: return False
         return True
-    purchases = await db.purchases.find({}, {"_id": 0}).to_list(5000)
+    purchases = await db.purchases.find({"is_void": {"$ne": True}}, {"_id": 0}).to_list(5000)
     sales = await db.sales.find({}, {"_id": 0}).to_list(5000)
-    expenses_docs = await db.expenses.find({}, {"_id": 0}).to_list(5000)
+    expenses_docs = await db.expenses.find({"is_void": {"$ne": True}}, {"_id": 0}).to_list(5000)
     salaries = await db.salaries.find({}, {"_id": 0}).to_list(2000)
     rev = round(sum(s["total_amount"] for s in sales if in_range(s["date"])), 2)
     cogs = round(sum(p["total_cost"] for p in purchases if in_range(p["date"])), 2)
@@ -1031,9 +1152,9 @@ async def get_pnl(period: str = "today", start: Optional[str] = None,
 async def pnl_trend(days: int = 30, user=Depends(require_roles("admin", "viewer"))):
     end_dt = datetime.now(IST).date()
     start_dt = end_dt - timedelta(days=days - 1)
-    purchases = await db.purchases.find({}, {"_id": 0}).to_list(5000)
+    purchases = await db.purchases.find({"is_void": {"$ne": True}}, {"_id": 0}).to_list(5000)
     sales = await db.sales.find({}, {"_id": 0}).to_list(5000)
-    expenses_docs = await db.expenses.find({}, {"_id": 0}).to_list(5000)
+    expenses_docs = await db.expenses.find({"is_void": {"$ne": True}}, {"_id": 0}).to_list(5000)
     salaries = await db.salaries.find({}, {"_id": 0}).to_list(2000)
     trend = []
     for i in range(days):

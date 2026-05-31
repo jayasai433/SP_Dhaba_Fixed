@@ -15,6 +15,18 @@ export function fmtDate(s) {
   return `${d}-${MONTHS[parseInt(m, 10) - 1]}-${y}`;
 }
 
+// Format ISO timestamp → "31-May-2026 14:32 IST"
+export function fmtTimestamp(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  const fmt = new Intl.DateTimeFormat("en-IN", {
+    timeZone: "Asia/Kolkata",
+    day: "2-digit", month: "short", year: "numeric",
+    hour: "2-digit", minute: "2-digit", hour12: false,
+  });
+  return fmt.format(d) + " IST";
+}
+
 // Today in IST (Asia/Kolkata) as YYYY-MM-DD
 export function todayIST() {
   const fmt = new Intl.DateTimeFormat("en-CA", {

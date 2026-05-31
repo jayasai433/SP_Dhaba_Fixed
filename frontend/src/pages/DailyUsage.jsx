@@ -7,10 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
-import { fmtDate, todayIST } from "@/lib/format";
-import { Plus, X, ChefHat } from "lucide-react";
+import { fmtDate, fmtTimestamp, todayIST } from "@/lib/format";
+import { Plus, X, ChefHat, Ban } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function DailyUsage() {
+  const { user } = useAuth();
+  const canAdd = ["admin", "staff"].includes(user.role);
   const [items, setItems] = useState([]);
   const [stockMap, setStockMap] = useState({});
   const [rows, setRows] = useState([]);
@@ -60,6 +63,16 @@ export default function DailyUsage() {
       api.get("/stock").then(({ data }) => setStockMap(Object.fromEntries(data.map((s) => [s.item_id, s.qty_left]))));
     } catch (err) { toast.error(formatApiError(err)); }
     finally { setSaving(false); }
+  };
+
+  const voidRow = async (id) => {
+    const reason = window.prompt("Reason for voiding this entry (required):");
+    if (!reason?.trim()) return;
+    try {
+      await api.patch(`/usage/${id}/void`, { reason: reason.trim() });
+      toast.success("Entry voided");
+      load();
+    } catch (err) { toast.error(formatApiError(err)); }
   };
 
   const activeItems = items.filter((i) => i.is_active);
@@ -152,6 +165,8 @@ export default function DailyUsage() {
                     <TableHead className="text-right">Qty Used</TableHead>
                     <TableHead>Notes</TableHead>
                     <TableHead>By</TableHead>
+                    <TableHead>Logged at</TableHead>
+                    {canAdd && <TableHead></TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -162,6 +177,15 @@ export default function DailyUsage() {
                       <TableCell className="text-right tabular-nums">{r.quantity_used} {r.unit}</TableCell>
                       <TableCell className="text-slate-500 text-sm">{r.notes || "—"}</TableCell>
                       <TableCell className="text-xs text-slate-500">{r.created_by_name}</TableCell>
+                      <TableCell className="text-xs text-slate-400 tabular-nums whitespace-nowrap">{fmtTimestamp(r.created_at)}</TableCell>
+                      {canAdd && (
+                        <TableCell>
+                          <button title="Void this entry" onClick={() => voidRow(r.id)}
+                            className="text-red-400 hover:text-red-600 transition-colors" data-testid={`void-usage-${r.id}`}>
+                            <Ban size={15} />
+                          </button>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>

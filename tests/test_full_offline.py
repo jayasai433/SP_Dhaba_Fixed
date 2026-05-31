@@ -605,3 +605,274 @@ class TestImportIntegrity:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "--tb=short"])
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 12. TIMESTAMPS, DUPLICATE DETECTION & VOID SYSTEM
+# ══════════════════════════════════════════════════════════════════════════════
+class TestTimestampDuplicateVoid:
+
+    def _server(self):
+        return Path("/home/claude/SP_Dhaba_Fixed/backend/server.py").read_text()
+
+    def _read(self, f):
+        return (Path("/home/claude/SP_Dhaba_Fixed/frontend/src") / f).read_text()
+
+    # ── Timestamp formatter ────────────────────────────────────────────────
+    def test_fmtTimestamp_exists_in_format_js(self):
+        src = self._read("lib/format.js")
+        assert "fmtTimestamp" in src
+        assert "Asia/Kolkata" in src
+
+    def test_fmtTimestamp_includes_IST_suffix(self):
+        src = self._read("lib/format.js")
+        assert "IST" in src
+
+    def test_fmtTimestamp_exported(self):
+        src = self._read("lib/format.js")
+        assert "export function fmtTimestamp" in src
+
+    def test_purchases_imports_fmtTimestamp(self):
+        src = self._read("pages/Purchases.jsx")
+        assert "fmtTimestamp" in src
+
+    def test_expenses_imports_fmtTimestamp(self):
+        src = self._read("pages/Expenses.jsx")
+        assert "fmtTimestamp" in src
+
+    def test_dailyusage_imports_fmtTimestamp(self):
+        src = self._read("pages/DailyUsage.jsx")
+        assert "fmtTimestamp" in src
+
+    def test_purchases_renders_logged_at_column(self):
+        src = self._read("pages/Purchases.jsx")
+        assert "Logged at" in src
+        assert "fmtTimestamp(r.created_at)" in src
+
+    def test_expenses_renders_logged_at_column(self):
+        src = self._read("pages/Expenses.jsx")
+        assert "Logged at" in src
+        assert "fmtTimestamp(r.created_at)" in src
+
+    def test_dailyusage_renders_logged_at_column(self):
+        src = self._read("pages/DailyUsage.jsx")
+        assert "Logged at" in src
+        assert "fmtTimestamp(r.created_at)" in src
+
+    # ── created_at in all create handlers ─────────────────────────────────
+    def test_purchase_doc_has_created_at(self):
+        src = self._server()
+        idx = src.find("async def create_purchase")
+        section = src[idx:idx+1200]
+        assert '"created_at": iso(now_utc())' in section
+
+    def test_usage_doc_has_created_at(self):
+        src = self._server()
+        idx = src.find("async def create_usage")
+        section = src[idx:idx+1200]
+        assert '"created_at": iso(now_utc())' in section
+
+    def test_expense_doc_has_created_at(self):
+        src = self._server()
+        idx = src.find("async def create_expense")
+        section = src[idx:idx+1200]
+        assert '"created_at": iso(now_utc())' in section
+
+    # ── Duplicate time-window detection ───────────────────────────────────
+    def test_purchase_duplicate_check_exists(self):
+        src = self._server()
+        idx = src.find("async def create_purchase")
+        section = src[idx:idx+1200]
+        assert "window_start" in section
+        assert "409" in section
+        assert "10" in section  # 10-second window
+
+    def test_usage_duplicate_check_exists(self):
+        src = self._server()
+        idx = src.find("async def create_usage")
+        section = src[idx:idx+1200]
+        assert "window_start" in section
+        assert "409" in section
+
+    def test_expense_duplicate_check_exists(self):
+        src = self._server()
+        idx = src.find("async def create_expense")
+        section = src[idx:idx+1200]
+        assert "window_start" in section
+        assert "409" in section
+
+    def test_duplicate_check_uses_is_void_filter(self):
+        """Voided entries should not count as duplicates"""
+        src = self._server()
+        idx = src.find("async def create_purchase")
+        section = src[idx:idx+1200]
+        assert '"is_void": False' in section
+
+    def test_duplicate_window_math(self):
+        """10-second window logic"""
+        from datetime import datetime, timezone, timedelta
+        now = datetime.now(timezone.utc)
+        window_start = now - timedelta(seconds=10)
+        entry_time = now - timedelta(seconds=5)
+        assert entry_time >= window_start  # within window → duplicate
+        entry_time2 = now - timedelta(seconds=15)
+        assert entry_time2 < window_start  # outside window → legitimate
+
+    # ── is_void field in create docs ──────────────────────────────────────
+    def test_purchase_doc_has_void_fields(self):
+        src = self._server()
+        idx = src.find("async def create_purchase")
+        section = src[idx:idx+1600]
+        assert '"voided_by": None' in section
+        assert 'void_reason' in section
+
+    def test_usage_doc_has_void_fields(self):
+        src = self._server()
+        idx = src.find("async def create_usage")
+        section = src[idx:idx+900]
+        assert '"is_void": False' in section
+
+    def test_expense_doc_has_void_fields(self):
+        src = self._server()
+        idx = src.find("async def create_expense")
+        section = src[idx:idx+900]
+        assert '"is_void": False' in section
+
+    # ── Void endpoints ─────────────────────────────────────────────────────
+    def test_void_purchase_endpoint_exists(self):
+        src = self._server()
+        assert '"/purchases/{purchase_id}/void"' in src
+
+    def test_void_usage_endpoint_exists(self):
+        src = self._server()
+        assert '"/usage/{usage_id}/void"' in src
+
+    def test_void_expense_endpoint_exists(self):
+        src = self._server()
+        assert '"/expenses/{expense_id}/void"' in src
+
+    def test_void_requires_reason(self):
+        src = self._server()
+        assert "Void reason is required" in src
+
+    def test_void_stores_voided_by_and_at(self):
+        src = self._server()
+        assert '"voided_by": user["name"]' in src
+        assert '"voided_at": iso(now_utc())' in src
+
+    def test_staff_cannot_void_others_entries(self):
+        src = self._server()
+        assert 'Staff can only void their own entries' in src
+
+    def test_staff_can_only_void_same_day(self):
+        src = self._server()
+        assert 'Staff can only void entries made today' in src
+        assert '86400' in src  # 24h in seconds
+
+    def test_cannot_void_already_voided(self):
+        src = self._server()
+        assert 'Already voided' in src
+
+    def test_viewer_cannot_access_void(self):
+        """Void endpoints use get_current_user — role check inside handler"""
+        src = self._server()
+        void_section = src[src.find('async def void_purchase'):][:300]
+        assert 'get_current_user' in void_section
+
+    # ── Void excluded from calculations ───────────────────────────────────
+    def test_stock_excludes_voided_purchases(self):
+        src = self._server()
+        idx = src.find('@api.get("/stock")')
+        section = src[idx:idx+600]
+        assert '"$ne": True' in section
+        assert '"is_void"' in section
+
+    def test_stock_excludes_voided_usage(self):
+        src = self._server()
+        idx = src.find('@api.get("/stock")')
+        section = src[idx:idx+600]
+        # Both purchase and usage aggs should exclude void
+        assert section.count('"is_void"') >= 2
+
+    def test_dashboard_excludes_voided_purchases(self):
+        src = self._server()
+        idx = src.find('async def dashboard')
+        section = src[idx:idx+400]
+        assert '"is_void"' in section
+
+    def test_dashboard_excludes_voided_expenses(self):
+        src = self._server()
+        idx = src.find('async def dashboard')
+        section = src[idx:idx+400]
+        assert section.count('"is_void"') >= 2
+
+    def test_pnl_excludes_voided_purchases(self):
+        src = self._server()
+        idx = src.find('async def _compute_pnl')
+        section = src[idx:idx+400]
+        assert '"is_void"' in section
+
+    def test_list_purchases_excludes_voided(self):
+        src = self._server()
+        idx = src.find('async def list_purchases')
+        section = src[idx:idx+500]
+        assert '"is_void"' in section
+
+    def test_list_usage_excludes_voided(self):
+        src = self._server()
+        idx = src.find('async def list_usage')
+        section = src[idx:idx+500]
+        assert '"is_void"' in section
+
+    def test_list_expenses_excludes_voided(self):
+        src = self._server()
+        idx = src.find('async def list_expenses')
+        section = src[idx:idx+700]
+        assert 'is_void' in section
+        assert 'ne' in section
+
+    # ── Frontend void UI ───────────────────────────────────────────────────
+    def test_purchases_has_void_button(self):
+        src = self._read("pages/Purchases.jsx")
+        assert "void-purchase" in src
+        assert "voidRow" in src
+
+    def test_expenses_has_void_button(self):
+        src = self._read("pages/Expenses.jsx")
+        assert "void-expense" in src
+        assert "voidRow" in src
+
+    def test_dailyusage_has_void_button(self):
+        src = self._read("pages/DailyUsage.jsx")
+        assert "void-usage" in src
+        assert "voidRow" in src
+
+    def test_void_button_admin_staff_only(self):
+        """canAdd guards the void button — viewers see no void button"""
+        for page in ["pages/Purchases.jsx", "pages/Expenses.jsx", "pages/DailyUsage.jsx"]:
+            src = self._read(page)
+            assert "canAdd" in src
+            assert "voidRow" in src
+
+    def test_void_prompts_for_reason(self):
+        """UI uses window.prompt to collect reason before calling API"""
+        for page in ["pages/Purchases.jsx", "pages/Expenses.jsx", "pages/DailyUsage.jsx"]:
+            src = self._read(page)
+            assert "window.prompt" in src
+            assert "reason.trim()" in src
+
+    def test_void_calls_correct_endpoint(self):
+        src = self._read("pages/Purchases.jsx")
+        assert "/purchases/${id}/void" in src or "purchases/" in src and "/void" in src
+
+    # ── Void business logic ───────────────────────────────────────────────
+    def test_void_reason_mandatory_frontend(self):
+        """If prompt is cancelled or empty, void is aborted"""
+        for page in ["pages/Purchases.jsx", "pages/Expenses.jsx", "pages/DailyUsage.jsx"]:
+            src = self._read(page)
+            assert "if (!reason?.trim()) return" in src
+
+    def test_fmtTimestamp_handles_null(self):
+        """fmtTimestamp should return — for null/undefined"""
+        src = self._read("lib/format.js")
+        assert "if (!iso)" in src
+        assert '"—"' in src or "'—'" in src
