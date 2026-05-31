@@ -222,6 +222,11 @@ async def seed():
     await db.daily_usage.create_index([("date", 1), ("item_id", 1)])
     await db.sales.create_index("date", unique=True)
 
+    # One-time cleanup of legacy seed accounts (typo'd domain)
+    await db.users.delete_many({"email": {"$in": [
+        "admin@sprojal.com", "lokesh@sprojal.com", "display@sprojal.com"
+    ]}})
+
     # Users (idempotent — update password if env-changed)
     seeds = [
         (os.environ.get("ADMIN_EMAIL", "admin@sprojal.com"),
