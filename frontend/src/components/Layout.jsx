@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Link, useLocation, Outlet } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBusinessProfile } from "@/contexts/BusinessProfileContext";
@@ -40,14 +40,17 @@ export default function Layout() {
   const [alertsCount, setAlertsCount] = useState(0);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  useEffect(() => {
-    const fetchAlerts = () => api.get("/alerts")
+  const fetchAlerts = useCallback(() => {
+    api.get("/alerts")
       .then(({ data }) => setAlertsCount(data.length))
       .catch(() => {});
+  }, []);
+
+  useEffect(() => {
     fetchAlerts();
     const t = setInterval(fetchAlerts, 60000);
     return () => clearInterval(t);
-  }, [loc.pathname]);
+  }, [fetchAlerts]);
 
   useEffect(() => { setDrawerOpen(false); }, [loc.pathname]);
 

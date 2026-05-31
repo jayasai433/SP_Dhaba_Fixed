@@ -35,7 +35,7 @@ export default function App() {
       <BusinessProfileProvider>
         <BrowserRouter>
           <Toaster richColors position="top-right" />
-        <Routes>
+          <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/forbidden" element={<Forbidden />} />
           <Route path="/" element={<RootRedirect />} />
@@ -76,8 +76,8 @@ export default function App() {
           </Route>
 
           <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </BrowserRouter>
+          </Routes>
+        </BrowserRouter>
       </BusinessProfileProvider>
     </AuthProvider>
   );

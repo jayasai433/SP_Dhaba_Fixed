@@ -13,7 +13,7 @@ import { Plus, Receipt } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
 export default function Purchases() {
-  const [params, setParams] = useSearchParams();
+  const [params] = useSearchParams();
   const { user } = useAuth();
   const canAdd = ["admin", "staff"].includes(user.role);
   const [items, setItems] = useState([]);

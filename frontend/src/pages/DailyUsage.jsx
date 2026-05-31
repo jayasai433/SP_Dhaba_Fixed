@@ -18,14 +18,14 @@ export default function DailyUsage() {
   const [entries, setEntries] = useState([{ rid: crypto.randomUUID(), item_id: "", qty: "", notes: "" }]);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     api.get("/items").then(({ data }) => setItems(data));
     api.get("/stock").then(({ data }) => {
       setStockMap(Object.fromEntries(data.map((s) => [s.item_id, s.qty_left])));
     });
+    api.get("/usage").then(({ data }) => setRows(data));
   }, []);
 
-  const load = useCallback(() => { api.get("/usage").then(({ data }) => setRows(data)); }, []);
   useEffect(() => { load(); }, [load]);
 
   const addRow = () => setEntries((e) => [...e, { rid: crypto.randomUUID(), item_id: "", qty: "", notes: "" }]);

@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import api from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
+import { useBusinessProfile } from "@/contexts/BusinessProfileContext";
 import { inr, fmtDate, todayIST } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { LogOut, Maximize2 } from "lucide-react";
@@ -13,6 +14,7 @@ const STATUS_BG = {
 
 export default function DisplayMode() {
   const { user, logout } = useAuth();
+  const { profile } = useBusinessProfile();
   const [stock, setStock] = useState([]);
   const [today, setToday] = useState(0);
   const [alerts, setAlerts] = useState([]);
@@ -50,7 +52,7 @@ export default function DisplayMode() {
         <div className="flex items-center gap-3">
           <div className="h-11 w-11 rounded-xl bg-orange-600 flex items-center justify-center font-display font-bold">SP</div>
           <div>
-            <div className="font-display text-lg font-semibold">SP Royal Punjabi Dhaba</div>
+            <div className="font-display text-lg font-semibold">{profile.name}</div>
             <div className="text-xs text-orange-200/70 tabular-nums">{fmtDate(todayIST())} · {now.toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata" })}</div>
           </div>
         </div>

@@ -13,16 +13,21 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.get("/auth/me")
+    const controller = new AbortController();
+    api.get("/auth/me", { signal: controller.signal })
       .then(({ data }) => {
         setUser(data);
         sessionStorage.setItem("sp_user", JSON.stringify(data));
       })
-      .catch(() => {
+      .catch((err) => {
+        if (err.name === "CanceledError") return;
         sessionStorage.removeItem("sp_user");
         setUser(null);
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+    return () => controller.abort();
   }, []);
 
   const login = async (email, password) => {
