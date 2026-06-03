@@ -62,10 +62,9 @@
     "serve": "^14.2.4"
   },
   "scripts": {
-    "start": "serve -s build -l tcp://0.0.0.0:$PORT",
+    "start": "craco start",
     "build": "craco build",
-    "test": "craco test",
-    "dev": "craco start"
+    "test": "craco test"
   },
   "browserslist": {
     "production": [

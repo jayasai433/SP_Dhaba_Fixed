@@ -1,0 +1,11 @@
+[phases.setup]
+nixPkgs = ["caddy"]
+
+[phases.install]
+cmds = ["yarn install --frozen-lockfile"]
+
+[phases.build]
+cmds = ["yarn run build"]
+
+[start]
+cmd = "caddy run --config /app/Caddyfile --adapter caddyfile"
