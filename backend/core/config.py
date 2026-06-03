@@ -6,9 +6,18 @@ import pytz
 ROOT_DIR = Path(__file__).parent.parent
 load_dotenv(ROOT_DIR / ".env")
 
-MONGO_URL       = os.environ["MONGO_URL"]
-DB_NAME         = os.environ["DB_NAME"]
-JWT_SECRET      = os.environ["JWT_SECRET"]
+def _require(key: str) -> str:
+    val = os.environ.get(key)
+    if not val:
+        raise RuntimeError(
+            f"Missing required environment variable: {key}\n"
+            f"Add it to Railway Variables or your .env file."
+        )
+    return val
+
+MONGO_URL       = _require("MONGO_URL")
+DB_NAME         = _require("DB_NAME")
+JWT_SECRET      = _require("JWT_SECRET")
 JWT_ALGO        = "HS256"
 TOKEN_TTL_HOURS = 8
 
