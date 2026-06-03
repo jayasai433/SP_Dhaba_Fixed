@@ -2,7 +2,7 @@ import os
 import uuid
 from core.db import db, client
 from core.utils import now_utc, iso
-from core.security import hash_password, verify_password
+from core.security import hash_password
 from core.config import (
     ADMIN_EMAIL, ADMIN_PASSWORD,
     STAFF_EMAIL, STAFF_PASSWORD,
@@ -78,6 +78,7 @@ async def _seed_indexes():
     await db.notifications.create_index("status")
 
 async def _seed_users():
+    # Remove old email addresses from previous version
     await db.users.delete_many({"email": {"$in": [
         "admin@sprojal.com", "lokesh@sprojal.com", "display@sprojal.com"
     ]}})
@@ -89,10 +90,9 @@ async def _seed_users():
     for email, pwd, name, role in seeds:
         existing = await db.users.find_one({"email": email})
         if not existing:
+            # First time only — create with default password from env var
             await ensure_user(email, pwd, name, role)
-        elif not verify_password(pwd, existing.get("password_hash", "")):
-            await db.users.update_one({"email": email},
-                                      {"$set": {"password_hash": hash_password(pwd)}})
+        # Never touch existing users — passwords managed via app UI only
 
 async def _seed_items():
     for name, cat, unit, reorder in SEED_ITEMS:
