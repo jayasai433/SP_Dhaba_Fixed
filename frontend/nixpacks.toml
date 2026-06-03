@@ -2,10 +2,10 @@
 nixPkgs = ["caddy"]
 
 [phases.install]
-cmds = ["yarn install --frozen-lockfile"]
+cmds = ["npm install --legacy-peer-deps"]
 
 [phases.build]
-cmds = ["yarn run build"]
+cmds = ["npm run build"]
 
 [start]
 cmd = "caddy run --config /app/Caddyfile --adapter caddyfile"
