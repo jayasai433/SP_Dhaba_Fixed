@@ -94,12 +94,16 @@ export default function Salaries() {
   const [payOpen, setPayOpen] = useState(null);
 
   const loadStaff = useCallback(async () => {
-    const { data } = await api.get("/staff");
-    setStaff(data);
+    try {
+      const { data } = await api.get("/staff");
+      setStaff(data);
+    } catch (err) { console.error("Failed to load staff:", err); }
   }, []);
   const loadRows = useCallback(async () => {
-    const { data } = await api.get("/salaries", { params: { month } });
-    setRows(data);
+    try {
+      const { data } = await api.get("/salaries", { params: { month } });
+      setRows(data);
+    } catch (err) { console.error("Failed to load salaries:", err); }
   }, [month]);
 
   useEffect(() => { loadStaff(); }, [loadStaff]);

@@ -196,14 +196,16 @@ export default function WhatsAppPane() {
   const [log, setLog] = useState([]);
 
   const loadAll = useCallback(async () => {
-    const [n, s, l] = await Promise.all([
-      api.get("/whatsapp/numbers"),
-      api.get("/whatsapp/settings"),
-      api.get("/whatsapp/log", { params: { limit: 20 } }),
-    ]);
-    setNums(n.data);
-    setSettings(s.data);
-    setLog(l.data);
+    try {
+      const [n, s, l] = await Promise.all([
+        api.get("/whatsapp/numbers"),
+        api.get("/whatsapp/settings"),
+        api.get("/whatsapp/log", { params: { limit: 20 } }),
+      ]);
+      setNums(n.data);
+      setSettings(s.data);
+      setLog(l.data);
+    } catch (err) { console.error("Failed to load WhatsApp settings:", err); }
   }, []);
   useEffect(() => { loadAll(); }, [loadAll]);
 

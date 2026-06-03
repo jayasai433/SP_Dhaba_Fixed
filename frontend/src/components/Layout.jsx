@@ -43,7 +43,7 @@ export default function Layout() {
   const fetchAlerts = useCallback(() => {
     api.get("/alerts")
       .then(({ data }) => setAlertsCount(data.length))
-      .catch(() => {});
+      .catch((err) => console.error('Alerts badge fetch failed:', err));
   }, []);
 
   useEffect(() => {

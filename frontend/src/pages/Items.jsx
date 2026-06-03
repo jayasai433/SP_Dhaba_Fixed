@@ -21,10 +21,12 @@ export default function Items() {
   const [open, setOpen] = useState(false);
 
   const load = useCallback(async () => {
-    const [it, ca, un] = await Promise.all([
-      api.get("/items"), api.get("/categories"), api.get("/units"),
-    ]);
-    setItems(it.data); setCategories(ca.data); setUnits(un.data);
+    try {
+      const [it, ca, un] = await Promise.all([
+        api.get("/items"), api.get("/categories"), api.get("/units"),
+      ]);
+      setItems(it.data); setCategories(ca.data); setUnits(un.data);
+    } catch (err) { console.error("Failed to load items:", err); }
   }, []);
   useEffect(() => { load(); }, [load]);
 
