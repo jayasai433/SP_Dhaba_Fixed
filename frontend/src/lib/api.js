@@ -3,10 +3,30 @@ import axios from "axios";
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 export const API = `${BACKEND_URL}/api`;
 
-// withCredentials sends/receives the httpOnly auth cookie. Token is no longer
-// stored in localStorage (XSS-safe). User profile is kept in sessionStorage
-// only for fast UI hydration; it carries no secret.
+// Token stored in localStorage for cross-domain deployments
+// (httpOnly cookie only works same-domain)
+export function getToken() {
+  return localStorage.getItem("sp_token");
+}
+
+export function setToken(token) {
+  localStorage.setItem("sp_token", token);
+}
+
+export function clearToken() {
+  localStorage.removeItem("sp_token");
+}
+
 const api = axios.create({ baseURL: API, withCredentials: true });
+
+// Attach token to every request
+api.interceptors.request.use((config) => {
+  const token = getToken();
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
 
 api.interceptors.response.use(
   (r) => r,
@@ -14,6 +34,7 @@ api.interceptors.response.use(
     if (err.response?.status === 401) {
       const path = window.location.pathname;
       if (path !== "/login") {
+        clearToken();
         sessionStorage.removeItem("sp_user");
         window.location.href = "/login";
       }

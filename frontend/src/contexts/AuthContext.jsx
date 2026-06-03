@@ -1,10 +1,8 @@
 import { createContext, useContext, useEffect, useState } from "react";
-import api from "@/lib/api";
+import api, { setToken, clearToken } from "@/lib/api";
 
 const AuthContext = createContext(null);
 
-// Auth token is in an httpOnly cookie (XSS-safe). User profile is mirrored to
-// sessionStorage only for fast first-paint; it contains no secret material.
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => {
     const raw = sessionStorage.getItem("sp_user");
@@ -21,6 +19,7 @@ export function AuthProvider({ children }) {
       })
       .catch((err) => {
         if (err.name === "CanceledError") return;
+        clearToken();
         sessionStorage.removeItem("sp_user");
         setUser(null);
       })
@@ -32,7 +31,8 @@ export function AuthProvider({ children }) {
 
   const login = async (email, password) => {
     const { data } = await api.post("/auth/login", { email, password });
-    // Browser stored the httpOnly cookie automatically via Set-Cookie header.
+    // Store token for cross-domain requests (cookie won't work cross-domain)
+    if (data.token) setToken(data.token);
     sessionStorage.setItem("sp_user", JSON.stringify(data.user));
     setUser(data.user);
     return data.user;
@@ -40,6 +40,7 @@ export function AuthProvider({ children }) {
 
   const logout = async () => {
     try { await api.post("/auth/logout"); } catch { /* ignore */ }
+    clearToken();
     sessionStorage.removeItem("sp_user");
     setUser(null);
     window.location.href = "/login";
