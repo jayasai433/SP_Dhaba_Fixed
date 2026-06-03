@@ -62,7 +62,7 @@
     "serve": "^14.2.4"
   },
   "scripts": {
-    "start": "serve -s build -l ${PORT:-3000}",
+    "start": "serve -s build -p 3000",
     "build": "craco build",
     "test": "craco test",
     "dev": "craco start"
