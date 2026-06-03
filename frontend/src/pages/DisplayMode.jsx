@@ -19,16 +19,23 @@ export default function DisplayMode() {
   const [today, setToday] = useState(0);
   const [alerts, setAlerts] = useState([]);
   const [now, setNow] = useState(new Date());
+  const [error, setError] = useState(false);
 
   const load = useCallback(async () => {
-    const [s, d, a] = await Promise.all([
-      api.get("/stock").then((r) => r.data),
-      api.get("/sales/check/" + todayIST()).then((r) => r.data),
-      api.get("/alerts").then((r) => r.data),
-    ]);
-    setStock(s.filter((x) => x.is_active));
-    setToday(d.entry?.total_amount || 0);
-    setAlerts(a);
+    try {
+      const [s, d, a] = await Promise.all([
+        api.get("/stock").then((r) => r.data),
+        api.get("/sales/check/" + todayIST()).then((r) => r.data),
+        api.get("/alerts").then((r) => r.data),
+      ]);
+      setStock(s.filter((x) => x.is_active));
+      setToday(d.entry?.total_amount || 0);
+      setAlerts(a);
+      setError(false);
+    } catch (err) {
+      console.error(err);
+      setError(true);
+    }
   }, []);
 
   useEffect(() => {
@@ -42,9 +49,9 @@ export default function DisplayMode() {
     e.preventDefault();
     e.stopPropagation();
     if (document.fullscreenElement) {
-      document.exitFullscreen().catch(() => {});
+      document.exitFullscreen().catch((err) => console.error(err));
     } else {
-      document.documentElement.requestFullscreen().catch(() => {});
+      document.documentElement.requestFullscreen().catch((err) => console.error(err));
     }
   };
 

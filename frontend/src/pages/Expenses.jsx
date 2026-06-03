@@ -26,10 +26,10 @@ export default function Expenses() {
   const [filterCat, setFilterCat] = useState("all");
   const { start, end, setStart, setEnd, dateParams } = useDateFilter();
 
-  useEffect(() => { api.get("/expense-categories").then(({ data }) => setCats(data)).catch(() => {}); }, []);
+  useEffect(() => { api.get("/expense-categories").then(({ data }) => setCats(data)).catch((err) => console.error(err)); }, []);
   const load = useCallback(() => {
     const q = { ...dateParams, ...(filterCat !== "all" ? { category: filterCat } : {}) };
-    api.get("/expenses", { params: q }).then(({ data }) => setRows(data)).catch(() => {});
+    api.get("/expenses", { params: q }).then(({ data }) => setRows(data)).catch((err) => console.error(err));
   }, [filterCat, dateParams]);
   useEffect(() => { load(); }, [load]);
 

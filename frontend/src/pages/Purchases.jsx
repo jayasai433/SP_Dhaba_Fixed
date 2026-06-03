@@ -30,10 +30,10 @@ export default function Purchases() {
   const [qty, setQty] = useState("");
   const [price, setPrice] = useState("");
 
-  useEffect(() => { api.get("/items").then(({ data }) => setItems(data)).catch(() => {}); }, []);
+  useEffect(() => { api.get("/items").then(({ data }) => setItems(data)).catch((err) => console.error(err)); }, []);
   const load = useCallback(() => {
     const q = { ...dateParams, ...(filterItem !== "all" ? { item_id: filterItem } : {}) };
-    api.get("/purchases", { params: q }).then(({ data }) => setRows(data)).catch(() => {});
+    api.get("/purchases", { params: q }).then(({ data }) => setRows(data)).catch((err) => console.error(err));
   }, [filterItem, dateParams]);
   useEffect(() => { load(); }, [load]);
 

@@ -49,7 +49,7 @@ export default function DailyUsage() {
       toast.success(`${valid.length} usage entr${valid.length === 1 ? "y" : "ies"} saved`);
       setEntries([{ rid: crypto.randomUUID(), item_id: "", qty: "", notes: "" }]);
       load();
-      api.get("/stock").then(({ data }) => setStockMap(Object.fromEntries(data.map((s) => [s.item_id, s.qty_left])))).catch(() => {});
+      api.get("/stock").then(({ data }) => setStockMap(Object.fromEntries(data.map((s) => [s.item_id, s.qty_left])))).catch((err) => console.error(err));
     } catch (err) {
       const status = err?.response?.status;
       const msg = formatApiError(err);

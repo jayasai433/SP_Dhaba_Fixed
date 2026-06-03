@@ -20,12 +20,12 @@ export default function Sales() {
   const [notes, setNotes] = useState("");
   const [duplicate, setDuplicate] = useState(null);
 
-  const load = useCallback(() => { api.get("/sales").then(({ data }) => setRows(data)).catch(() => {}); }, []);
+  const load = useCallback(() => { api.get("/sales").then(({ data }) => setRows(data)).catch((err) => console.error(err)); }, []);
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
     if (!date) return setDuplicate(null);
-    api.get(`/sales/check/${date}`).then(({ data }) => setDuplicate(data.exists ? data.entry : null)).catch(() => {});
+    api.get(`/sales/check/${date}`).then(({ data }) => setDuplicate(data.exists ? data.entry : null)).catch(() => setDuplicate(null));
   }, [date]);
 
   const total = (parseFloat(lunch || 0) + parseFloat(dinner || 0) + parseFloat(other || 0)) || 0;
