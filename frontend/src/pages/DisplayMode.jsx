@@ -38,9 +38,14 @@ export default function DisplayMode() {
     return () => { clearInterval(t1); clearInterval(t2); };
   }, [load]);
 
-  const fullscreen = () => {
-    if (document.fullscreenElement) document.exitFullscreen();
-    else document.documentElement.requestFullscreen();
+  const fullscreen = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
+    } else {
+      document.documentElement.requestFullscreen().catch(() => {});
+    }
   };
 
   const counts = stock.reduce((acc, s) => { acc[s.status] = (acc[s.status] || 0) + 1; return acc; }, { in: 0, low: 0, out: 0 });

@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import { formatApiError } from "@/lib/api";
 import { Eye, EyeOff, LogIn } from "lucide-react";
 
-const BG = null; // Using gradient background instead of external CDN image
+// No external image - using pure CSS gradient background
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -47,8 +47,8 @@ export default function Login() {
     <div className="min-h-screen w-full flex flex-col md:flex-row" data-testid="login-page">
       {/* Visual side */}
       <div className="hidden md:block flex-1 relative">
-        <img src={BG} alt="" className="absolute inset-0 w-full h-full object-cover" />
-        <div className="absolute inset-0 bg-gradient-to-tr from-[#2D1606]/80 via-[#2D1606]/40 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-br from-[#2D1606] via-[#5C1E0A] to-[#8B3A0F]" />
+        <div className="absolute inset-0" style={{backgroundImage: "radial-gradient(circle at 20% 80%, rgba(255,140,0,0.15) 0%, transparent 60%), radial-gradient(circle at 80% 20%, rgba(255,80,0,0.1) 0%, transparent 60%)"}} />
         <div className="relative h-full flex flex-col justify-end p-12 text-white">
           <div className="mb-3 text-xs tracking-[0.3em] uppercase text-orange-200">SP Royal</div>
           <h1 className="font-display text-5xl font-bold leading-tight max-w-md">
@@ -84,7 +84,7 @@ export default function Login() {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@sprojal.com"
+                  placeholder="you@spdhaba.com"
                   className="h-12 rounded-lg"
                 />
               </div>

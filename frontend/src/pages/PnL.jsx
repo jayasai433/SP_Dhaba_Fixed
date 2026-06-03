@@ -28,18 +28,19 @@ function Row({ label, value, neg, big }) {
 export default function PnL() {
   const [period, setPeriod] = useState("today");
   const [pnl, setPnl] = useState(null);
+  const [error, setError] = useState(false);
   const [trend, setTrend] = useState([]);
 
   useEffect(() => {
     api.get("/pnl", { params: { period } })
       .then(({ data }) => setPnl(data))
-      .catch(() => {});
+      .catch(() => setError(true));
   }, [period]);
 
   useEffect(() => {
     api.get("/pnl/trend", { params: { days: 30 } })
       .then(({ data }) => setTrend(data))
-      .catch(() => {});
+      .catch(() => setError(true));
   }, []);
 
   const download = async () => {
@@ -57,6 +58,16 @@ export default function PnL() {
       toast.error("Failed to export PDF. Please try again.");
     }
   };
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-slate-500">
+        <TrendingDown size={40} className="text-orange-400 mb-3" />
+        <p className="font-medium">Could not load P&L data</p>
+        <p className="text-sm mt-1">Check your connection and refresh the page</p>
+      </div>
+    );
+  }
 
   if (!pnl) {
     return <div className="space-y-4"><Skeleton className="h-10 w-64" /><Skeleton className="h-96 rounded-2xl" /></div>;

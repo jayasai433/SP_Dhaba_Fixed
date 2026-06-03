@@ -44,15 +44,26 @@ function KPI({ icon: Icon, label, value, hint, color = "orange", testid }) {
 
 export default function Dashboard() {
   const [data, setData] = useState(null);
+  const [error, setError] = useState(false);
   useEffect(() => {
     const fetchDashboard = () =>
       api.get("/dashboard")
         .then(({ data }) => setData(data))
-        .catch(() => {});
+        .catch(() => setError(true));
     fetchDashboard();
     const t = setInterval(fetchDashboard, 60000);
     return () => clearInterval(t);
   }, []);
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-slate-500">
+        <AlertTriangle size={40} className="text-orange-400 mb-3" />
+        <p className="font-medium">Could not load dashboard</p>
+        <p className="text-sm mt-1">Check your connection and refresh the page</p>
+      </div>
+    );
+  }
 
   if (!data) {
     return (

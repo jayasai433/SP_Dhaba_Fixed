@@ -22,7 +22,7 @@ export default function LiveStock() {
   const [cat, setCat] = useState("all");
   const [status, setStatus] = useState("all");
 
-  const load = useCallback(() => api.get("/stock").then(({ data }) => setStock(data)).catch(() => {}), []);
+  const load = useCallback(() => api.get("/stock").then(({ data }) => setStock(data)).catch(() => setError(true)), []);
   useEffect(() => { load(); const t = setInterval(load, 60000); return () => clearInterval(t); }, [load]);
 
   const categories = useMemo(() => {
@@ -37,6 +37,16 @@ export default function LiveStock() {
       .filter((s) => cat === "all" || s.category === cat)
       .filter((s) => status === "all" || s.status === status);
   }, [stock, q, cat, status]);
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-slate-500">
+        <div className="text-4xl mb-3">📦</div>
+        <p className="font-medium">Could not load stock data</p>
+        <p className="text-sm mt-1">Check your connection and refresh the page</p>
+      </div>
+    );
+  }
 
   if (!stock) {
     return (
