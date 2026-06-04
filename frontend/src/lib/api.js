@@ -17,7 +17,7 @@ export function clearToken() {
   localStorage.removeItem("sp_token");
 }
 
-const api = axios.create({ baseURL: API }); // No withCredentials - using Bearer token
+const api = axios.create({ baseURL: API, timeout: 15000 }); // 15s timeout
 
 // Attach token to every request
 api.interceptors.request.use((config) => {
@@ -28,9 +28,28 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Retry helper — retries network errors up to 2 times with backoff
+async function retryRequest(err) {
+  const config = err.config;
+  if (!config) return Promise.reject(err);
+  
+  // Only retry on network errors or 5xx (not 4xx — those are real errors)
+  const isNetworkError = !err.response;
+  const is5xx = err.response?.status >= 500;
+  if (!isNetworkError && !is5xx) return Promise.reject(err);
+  
+  config.__retryCount = config.__retryCount || 0;
+  if (config.__retryCount >= 2) return Promise.reject(err);
+  
+  config.__retryCount++;
+  const delay = config.__retryCount * 1000; // 1s, 2s backoff
+  await new Promise((r) => setTimeout(r, delay));
+  return api(config);
+}
+
 api.interceptors.response.use(
   (r) => r,
-  (err) => {
+  async (err) => {
     if (err.response?.status === 401) {
       const path = window.location.pathname;
       if (path !== "/login") {
@@ -38,8 +57,9 @@ api.interceptors.response.use(
         sessionStorage.removeItem("sp_user");
         window.location.href = "/login";
       }
+      return Promise.reject(err);
     }
-    return Promise.reject(err);
+    return retryRequest(err);
   }
 );
 

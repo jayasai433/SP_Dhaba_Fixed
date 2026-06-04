@@ -50,7 +50,12 @@ export default function Login() {
       const dest = from || (u.role === "viewer" ? "/display" : (u.role === "staff" ? "/stock" : "/dashboard"));
       navigate(dest, { replace: true });
     } catch (err) {
-      toast.error(formatApiError(err, "Login failed"));
+      // Detect network error specifically
+      if (!err.response && err.message === "Network Error") {
+        toast.error("Cannot reach server — check your internet connection and try again");
+      } else {
+        toast.error(formatApiError(err, "Login failed"));
+      }
     } finally {
       setLoading(false);
     }

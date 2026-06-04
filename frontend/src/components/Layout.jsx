@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Link, useLocation, Outlet } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBusinessProfile } from "@/contexts/BusinessProfileContext";
+import { WifiOff } from "lucide-react";
 import api from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
@@ -36,6 +37,17 @@ const MOBILE_NAV_BY_ROLE = {
 export default function Layout() {
   const { user, logout } = useAuth();
   const { profile } = useBusinessProfile();
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
+  useEffect(() => {
+    const goOffline = () => setIsOffline(true);
+    const goOnline  = () => setIsOffline(false);
+    window.addEventListener("offline", goOffline);
+    window.addEventListener("online",  goOnline);
+    return () => {
+      window.removeEventListener("offline", goOffline);
+      window.removeEventListener("online",  goOnline);
+    };
+  }, []);
   const loc = useLocation();
   const [alertsCount, setAlertsCount] = useState(0);
   const [drawerOpen, setDrawerOpen] = useState(false);
