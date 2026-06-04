@@ -23,13 +23,13 @@ const NAV = [
   { to: "/salaries", label: "Salaries", icon: Users, roles: ["admin"] },
   { to: "/pnl", label: "P&L Statement", icon: LineChart, roles: ["admin", "viewer"] },
   { to: "/items", label: "Item Master", icon: Package, roles: ["admin"] },
-  { to: "/display", label: "Display Mode", icon: Tv, roles: ["viewer", "admin"] },
+  { to: "/display", label: "Display Mode", icon: Tv, roles: ["viewer", "admin", "staff"] },
   { to: "/settings", label: "Settings", icon: Settings, roles: ["admin"] },
 ];
 
 const MOBILE_NAV_BY_ROLE = {
   admin: ["/dashboard", "/stock", "/purchases", "/sales", "/pnl"],
-  staff: ["/stock", "/purchases", "/usage", "/sales", "/expenses"],
+  staff: ["/stock", "/purchases", "/usage", "/sales", "/expenses", "/display"],
   viewer: ["/dashboard", "/stock", "/alerts", "/pnl", "/display"],
 };
 

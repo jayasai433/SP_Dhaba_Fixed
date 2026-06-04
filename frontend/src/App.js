@@ -49,22 +49,22 @@ export default function App() {
             <Route path="/stock" element={<ErrorBoundary><LiveStock /></ErrorBoundary>} />
             <Route path="/alerts" element={<ErrorBoundary><Alerts /></ErrorBoundary>} />
             <Route path="/purchases" element={
-              <ProtectedRoute roles={["admin", "staff", "viewer"]}><ErrorBoundary><Purchases /></ErrorBoundary></ProtectedRoute>
+              <ProtectedRoute roles={["admin", "staff"]}><ErrorBoundary><Purchases /></ErrorBoundary></ProtectedRoute>
             } />
             <Route path="/usage" element={
-              <ProtectedRoute roles={["admin", "staff", "viewer"]}><ErrorBoundary><DailyUsage /></ErrorBoundary></ProtectedRoute>
+              <ProtectedRoute roles={["admin", "staff"]}><ErrorBoundary><DailyUsage /></ErrorBoundary></ProtectedRoute>
             } />
             <Route path="/sales" element={
-              <ProtectedRoute roles={["admin", "staff", "viewer"]}><ErrorBoundary><Sales /></ErrorBoundary></ProtectedRoute>
+              <ProtectedRoute roles={["admin", "staff"]}><ErrorBoundary><Sales /></ErrorBoundary></ProtectedRoute>
             } />
             <Route path="/items" element={
               <ProtectedRoute roles={["admin"]}><ErrorBoundary><Items /></ErrorBoundary></ProtectedRoute>
             } />
             <Route path="/expenses" element={
-              <ProtectedRoute roles={["admin", "staff", "viewer"]}><ErrorBoundary><Expenses /></ErrorBoundary></ProtectedRoute>
+              <ProtectedRoute roles={["admin", "staff"]}><ErrorBoundary><Expenses /></ErrorBoundary></ProtectedRoute>
             } />
             <Route path="/salaries" element={
-              <ProtectedRoute roles={["admin", "viewer"]}><ErrorBoundary><Salaries /></ErrorBoundary></ProtectedRoute>
+              <ProtectedRoute roles={["admin"]}><ErrorBoundary><Salaries /></ErrorBoundary></ProtectedRoute>
             } />
             <Route path="/pnl" element={
               <ProtectedRoute roles={["admin", "viewer"]}><ErrorBoundary><PnL /></ErrorBoundary></ProtectedRoute>
@@ -73,7 +73,7 @@ export default function App() {
               <ProtectedRoute roles={["admin"]}><ErrorBoundary><Settings /></ErrorBoundary></ProtectedRoute>
             } />
             <Route path="/display" element={
-              <ProtectedRoute roles={["admin", "viewer"]}><ErrorBoundary><DisplayMode /></ErrorBoundary></ProtectedRoute>
+              <ProtectedRoute roles={["admin", "viewer", "staff"]}><ErrorBoundary><DisplayMode /></ErrorBoundary></ProtectedRoute>
             } />
           </Route>
 
