@@ -22,25 +22,52 @@ def _date_range_for_period(period: str):
     return today.isoformat(), today.isoformat()
 
 async def compute_pnl(start: Optional[str], end: Optional[str]) -> dict:
-    def in_range(d):
-        if start and d < start: return False
-        if end   and d > end:   return False
-        return True
+    import asyncio
+    # Build date filter
+    date_match: dict = {}
+    if start: date_match["$gte"] = start
+    if end:   date_match["$lte"] = end
 
-    purchases     = await db.purchases.find({"is_void": {"$ne": True}}, {"_id": 0}).to_list(5000)
-    sales         = await db.sales.find({}, {"_id": 0}).to_list(5000)
-    expenses_docs = await db.expenses.find({"is_void": {"$ne": True}}, {"_id": 0}).to_list(5000)
-    salaries      = await db.salaries.find({}, {"_id": 0}).to_list(2000)
+    purchase_match  = {"is_void": {"$ne": True}}
+    sales_match: dict     = {}
+    expenses_match  = {"is_void": {"$ne": True}}
+    salaries_match  = {"paid_date": {"$exists": True, "$ne": None}}
 
-    rev  = round(sum(s["total_amount"]     for s in sales         if in_range(s["date"])), 2)
-    cogs = round(sum(p["total_cost"]       for p in purchases      if in_range(p["date"])), 2)
-    exp  = round(sum(e["amount"]           for e in expenses_docs  if in_range(e["date"])), 2)
-    sal  = round(sum(s.get("net_payable", 0) for s in salaries
-                     if s.get("paid_date") and in_range(s["paid_date"])), 2)
+    if date_match:
+        purchase_match["date"]  = date_match
+        sales_match["date"]     = date_match
+        expenses_match["date"]  = date_match
+        salaries_match["paid_date"] = date_match
+
+    # All aggregations in parallel — scalable to any data volume
+    pur_agg, sal_agg, exp_agg, salary_agg = await asyncio.gather(
+        db.purchases.aggregate([
+            {"$match": purchase_match},
+            {"$group": {"_id": None, "total": {"$sum": "$total_cost"}}}
+        ]).to_list(1),
+        db.sales.aggregate([
+            {"$match": sales_match},
+            {"$group": {"_id": None, "total": {"$sum": "$total_amount"}}}
+        ]).to_list(1),
+        db.expenses.aggregate([
+            {"$match": expenses_match},
+            {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+        ]).to_list(1),
+        db.salaries.aggregate([
+            {"$match": salaries_match},
+            {"$group": {"_id": None, "total": {"$sum": "$net_payable"}}}
+        ]).to_list(1),
+    )
+
+    rev  = round(sal_agg[0]["total"]    if sal_agg    else 0, 2)
+    cogs = round(pur_agg[0]["total"]    if pur_agg    else 0, 2)
+    exp  = round(exp_agg[0]["total"]    if exp_agg    else 0, 2)
+    sal  = round(salary_agg[0]["total"] if salary_agg else 0, 2)
     net  = round(rev - cogs - exp - sal, 2)
 
     return {"start": start, "end": end, "revenue": rev, "cogs": cogs,
-            "expenses": exp, "salaries": sal, "net_profit": net}
+            "expenses": exp, "salaries": sal, "net_profit": net,
+            "margin_pct": round((net / rev * 100) if rev else 0, 1)}
 
 async def compute_pnl_trend(days: int) -> list:
     end_dt   = datetime.now(IST).date()
