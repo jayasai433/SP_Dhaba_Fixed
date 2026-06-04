@@ -1,5 +1,5 @@
 from typing import Literal, Optional
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 
 class UserOut(BaseModel):
     id: str
@@ -11,13 +11,13 @@ class UserOut(BaseModel):
 
 class LoginIn(BaseModel):
     email: EmailStr
-    password: str
+    password: str = Field(min_length=1, max_length=128)
 
 class UserCreateIn(BaseModel):
-    name: str
-    email: EmailStr
-    password: str
-    role: Literal["admin", "staff", "viewer"]
+    name:     str = Field(min_length=1, max_length=100)
+    email:    EmailStr
+    password: str = Field(min_length=8, max_length=128)
+    role:     Literal["admin", "staff", "viewer"]
 
 class UserUpdateIn(BaseModel):
     name:      Optional[str]                              = None

@@ -21,6 +21,20 @@ from routers.whatsapp  import router as whatsapp_router
 # ── App ───────────────────────────────────────────────────────────────────
 app = FastAPI(title="SP Royal Punjabi Dhaba — Operations Manager")
 
+# ── Security Headers ──────────────────────────────────────────────────────
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        return response
+
+app.add_middleware(SecurityHeadersMiddleware)
+
 # ── CORS ──────────────────────────────────────────────────────────────────
 # CORS: credentials require specific origins (not "*")
 _cors_origins = CORS_ORIGINS if CORS_ORIGINS != ["*"] else ["*"]

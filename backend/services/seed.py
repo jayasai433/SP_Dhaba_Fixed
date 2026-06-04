@@ -69,13 +69,31 @@ async def ensure_user(email, password, name, role):
     })
 
 async def _seed_indexes():
-    await db.users.create_index("email", unique=True)
-    await db.items.create_index([("name", 1)], unique=True)
-    await db.purchases.create_index([("date", 1), ("item_id", 1)])
-    await db.daily_usage.create_index([("date", 1), ("item_id", 1)])
-    await db.sales.create_index("date", unique=True)
-    await db.notifications.create_index([("created_at", -1)])
-    await db.notifications.create_index("status")
+    import asyncio
+    # Run all index creation in parallel for faster startup
+    await asyncio.gather(
+        db.users.create_index("email", unique=True),
+        db.items.create_index([("name", 1)], unique=True),
+        # Purchases: fast lookup by date (P&L, dashboard) and item (stock calc)
+        db.purchases.create_index([("date", 1)]),
+        db.purchases.create_index([("item_id", 1)]),
+        db.purchases.create_index([("is_void", 1), ("date", 1)]),
+        # Usage: same pattern as purchases
+        db.daily_usage.create_index([("date", 1)]),
+        db.daily_usage.create_index([("item_id", 1)]),
+        db.daily_usage.create_index([("is_void", 1), ("date", 1)]),
+        # Sales: unique per day + fast date lookup
+        db.sales.create_index("date", unique=True),
+        # Expenses: fast lookup by date and void status
+        db.expenses.create_index([("is_void", 1), ("date", 1)]),
+        db.expenses.create_index([("date", 1)]),
+        # Salaries: fast lookup by paid_date for P&L
+        db.salaries.create_index([("paid_date", 1)]),
+        db.salaries.create_index([("staff_id", 1), ("month", 1)], unique=True),
+        # Notifications
+        db.notifications.create_index([("created_at", -1)]),
+        db.notifications.create_index("status"),
+    )
 
 async def _seed_users():
     # Remove old email addresses from previous version
