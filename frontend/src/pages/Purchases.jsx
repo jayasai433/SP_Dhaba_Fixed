@@ -93,7 +93,7 @@ export default function Purchases() {
             <h3 className="font-display text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
               <Plus size={18} className="text-orange-600" />Add Purchase
             </h3>
-            <form onSubmit={submit} className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+            <form onSubmit={submit} className="grid grid-cols-1 md:grid-cols-12 gap-3 items-start">
               <div className="md:col-span-4">
                 <Label className="text-sm mb-1.5 block">Item</Label>
                 <Select value={itemId} onValueChange={setItemId}>
@@ -104,25 +104,29 @@ export default function Purchases() {
                     ))}
                   </SelectContent>
                 </Select>
-                {selectedItem && (
-                  <div className="text-xs text-slate-500 mt-1">{selectedItem.category} · per {selectedItem.unit}</div>
-                )}
+                <div className="text-xs text-slate-500 mt-1 h-4">
+                  {selectedItem ? `${selectedItem.category} · per ${selectedItem.unit}` : ""}
+                </div>
               </div>
               <div className="md:col-span-2">
                 <Label className="text-sm mb-1.5 block">Date</Label>
                 <Input type="date" data-testid="purchase-date-input" value={date} onChange={(e) => setDate(e.target.value)} className="h-11 bg-white" />
+                <div className="h-4" />
               </div>
               <div className="md:col-span-2">
                 <Label className="text-sm mb-1.5 block">Quantity {selectedItem && `(${selectedItem.unit})`}</Label>
                 <Input type="number" step="0.01" min="0" data-testid="purchase-qty-input" value={qty} onChange={(e) => setQty(e.target.value)} placeholder="0" className="h-11 bg-white tabular-nums" />
+                <div className="h-4" />
               </div>
               <div className="md:col-span-2">
                 <Label className="text-sm mb-1.5 block">Price (₹ per unit)</Label>
                 <Input type="number" step="0.01" min="0" data-testid="purchase-price-input" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="0.00" className="h-11 bg-white tabular-nums" />
+                <div className="h-4" />
               </div>
               <div className="md:col-span-2">
                 <Label className="text-sm mb-1.5 block">Total</Label>
                 <div className="h-11 px-3 rounded-lg bg-orange-50 border border-orange-200 flex items-center font-semibold text-orange-700 tabular-nums" data-testid="purchase-total-preview">{inr(total)}</div>
+                <div className="h-4" />
               </div>
               <div className="md:col-span-12">
                 <Button type="submit" disabled={saving} data-testid="purchase-submit-button"

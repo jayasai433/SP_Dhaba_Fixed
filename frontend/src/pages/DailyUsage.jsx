@@ -134,7 +134,7 @@ export default function DailyUsage() {
                 const left = it ? stockMap[r.item_id] ?? 0 : null;
                 const exceeds = it && parseFloat(r.qty || 0) > (stockMap[r.item_id] ?? 0);
                 return (
-                  <div key={r.rid} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-end p-3 rounded-xl bg-orange-50/40 border border-orange-100">
+                  <div key={r.rid} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-start p-3 rounded-xl bg-orange-50/40 border border-orange-100">
                     <div className="md:col-span-4">
                       <Label className="text-xs mb-1 block">Item</Label>
                       <Select value={r.item_id} onValueChange={(v) => updateRow(r.rid, "item_id", v)}>
@@ -143,18 +143,22 @@ export default function DailyUsage() {
                           {activeItems.map((it) => <SelectItem key={it.id} value={it.id}>{it.name}</SelectItem>)}
                         </SelectContent>
                       </Select>
-                      {it && <div className="text-[11px] text-slate-500 mt-1">Available: <b className={exceeds ? "text-red-600" : ""}>{left} {it.unit}</b></div>}
+                      <div className="text-[11px] text-slate-500 mt-1 h-4">
+                        {it ? <>Available: <b className={exceeds ? "text-red-600" : ""}>{left} {it.unit}</b></> : ""}
+                      </div>
                     </div>
                     <div className="md:col-span-2">
                       <Label className="text-xs mb-1 block">Qty {it && `(${it.unit})`}</Label>
                       <Input type="number" step="0.01" min="0" data-testid={`usage-qty-${i}`}
                         value={r.qty} onChange={(e) => updateRow(r.rid, "qty", e.target.value)} className="h-11 bg-white tabular-nums" />
+                      <div className="h-4" />
                     </div>
                     <div className="md:col-span-5">
                       <Label className="text-xs mb-1 block">Notes (optional)</Label>
                       <Input data-testid={`usage-notes-${i}`} value={r.notes} onChange={(e) => updateRow(r.rid, "notes", e.target.value)} className="h-11 bg-white" />
+                      <div className="h-4" />
                     </div>
-                    <div className="md:col-span-1 flex justify-end">
+                    <div className="md:col-span-1 flex justify-start mt-6">
                       {entries.length > 1 && (
                         <Button type="button" variant="ghost" onClick={() => removeRow(r.rid)} className="h-11 w-11 p-0 text-red-600 hover:bg-red-50" data-testid={`usage-remove-${i}`}>
                           <X size={18} />
