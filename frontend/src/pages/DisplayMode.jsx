@@ -12,6 +12,17 @@ const STATUS_BG = {
   out: "bg-[#C62828]/40 border-[#C62828]/60",
 };
 
+// Wake Lock — prevents screen from dimming in Display Mode
+async function requestWakeLock() {
+  try {
+    if ("wakeLock" in navigator) {
+      await navigator.wakeLock.request("screen");
+    }
+  } catch (e) {
+    console.log("Wake Lock not available:", e);
+  }
+}
+
 export default function DisplayMode() {
   const { user, logout } = useAuth();
   const { profile } = useBusinessProfile();

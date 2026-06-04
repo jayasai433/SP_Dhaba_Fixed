@@ -121,14 +121,26 @@ export default function Sales() {
               <Label className="text-sm mb-1.5 block">Notes (optional)</Label>
               <Textarea data-testid="sales-notes-input" value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className="bg-white" />
             </div>
-            {duplicate && (
-              <div className="md:col-span-12 p-3 rounded-xl bg-amber-50 border border-amber-300 text-sm text-amber-900 flex items-center gap-2" data-testid="duplicate-warning">
+            {duplicate && !editing && (
+              <div className="md:col-span-12 p-3 rounded-xl bg-amber-50 border border-amber-300 text-sm text-amber-900 flex items-center gap-2 flex-wrap" data-testid="duplicate-warning">
                 <AlertTriangle size={16} />
-                Sales already recorded for <b>{fmtDate(date)}</b> ({inr(duplicate.total_amount)}). Choose another date.
+                Sales already recorded for <b>{fmtDate(date)}</b> ({inr(duplicate.total_amount)}).
+                {canEdit && (
+                  <button type="button" onClick={() => {
+                    setLunch(String(duplicate.lunch_amount || 0));
+                    setDinner(String(duplicate.dinner_amount || 0));
+                    setOther(String(duplicate.other_amount || 0));
+                    setNotes(duplicate.notes || "");
+                    setEditing(true);
+                  }} className="ml-2 underline text-orange-700 font-medium">
+                    Edit & Correct
+                  </button>
+                )}
+                {!canEdit && " Choose another date."}
               </div>
             )}
             <div className="md:col-span-12">
-              <Button type="submit" disabled={saving || !!duplicate} data-testid="sales-submit-button"
+              <Button type="submit" onClick={editing ? updateSales : undefined} disabled={saving || (!!duplicate && !editing)} data-testid="sales-submit-button"
                 className="rounded-full bg-orange-600 hover:bg-orange-700 px-6 active:scale-95">
                 {saving ? "Saving..." : "Save Sales"}
               </Button>

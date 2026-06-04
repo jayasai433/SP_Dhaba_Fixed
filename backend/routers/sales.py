@@ -44,3 +44,24 @@ async def create_sales(payload: SalesIn, user=Depends(require_roles("admin", "st
 async def check_sales(date: str, user=Depends(get_current_user)):
     entry = await db.sales.find_one({"date": date}, {"_id": 0})
     return {"exists": entry is not None, "entry": entry}
+
+@router.patch("/sales/{sale_id}")
+async def update_sales(sale_id: str, payload: SalesIn,
+                       user=Depends(require_roles("admin"))):
+    """Admin only: update an existing sales entry (e.g. to correct a mistake)"""
+    existing = await db.sales.find_one({"id": sale_id})
+    if not existing:
+        raise HTTPException(404, "Sales entry not found")
+    total = round(payload.lunch_amount + payload.dinner_amount + payload.other_amount, 2)
+    update = {
+        "lunch_amount": float(payload.lunch_amount),
+        "dinner_amount": float(payload.dinner_amount),
+        "other_amount": float(payload.other_amount),
+        "total_amount": total,
+        "notes": payload.notes or "",
+        "updated_by": user["name"],
+        "updated_at": iso(now_utc()),
+    }
+    await db.sales.update_one({"id": sale_id}, {"$set": update})
+    doc = await db.sales.find_one({"id": sale_id}, {"_id": 0})
+    return doc
