@@ -27,6 +27,9 @@ import bcrypt, jwt as pyjwt
 from mongomock_motor import AsyncMongoMockClient
 from httpx import AsyncClient, ASGITransport
 
+def now_utc(): return datetime.now(timezone.utc)
+def iso(dt): return dt.isoformat()
+
 # ── Patch the DB before server loads ──────────────────────────────────────
 import unittest.mock as mock
 _mock_client = AsyncMongoMockClient()
@@ -121,17 +124,17 @@ async def seed_db():
         {"id": "pur-001", "item_id": "item-001", "date": TODAY, "quantity": 10.0,
          "price_per_unit": 30.0, "total_cost": 300.0,
          "created_by": "admin-001", "created_by_name": "Jaya Sai",
-         "created_at": "2026-05-31T06:00:00+00:00",
+         "created_at": iso(now_utc()),
          "is_void": False, "voided_by": None, "voided_at": None, "void_reason": None},
         {"id": "pur-002", "item_id": "item-002", "date": TODAY, "quantity": 5.0,
          "price_per_unit": 25.0, "total_cost": 125.0,
          "created_by": "admin-001", "created_by_name": "Jaya Sai",
-         "created_at": "2026-05-31T06:05:00+00:00",
+         "created_at": iso(now_utc()),
          "is_void": False, "voided_by": None, "voided_at": None, "void_reason": None},
         {"id": "pur-003", "item_id": "item-003", "date": TODAY, "quantity": 2.0,
          "price_per_unit": 120.0, "total_cost": 240.0,
          "created_by": "admin-001", "created_by_name": "Jaya Sai",
-         "created_at": "2026-05-31T06:10:00+00:00",
+         "created_at": iso(now_utc()),
          "is_void": False, "voided_by": None, "voided_at": None, "void_reason": None},
     ])
 
@@ -139,15 +142,15 @@ async def seed_db():
     await _mock_db.daily_usage.insert_many([
         {"id": "use-001", "item_id": "item-001", "date": TODAY, "quantity_used": 4.0,
          "notes": "lunch prep", "created_by": "staff-001", "created_by_name": "Lokesh",
-         "created_at": "2026-05-31T10:00:00+00:00",
+         "created_at": iso(now_utc()),
          "is_void": False, "voided_by": None, "voided_at": None, "void_reason": None},
         {"id": "use-002", "item_id": "item-002", "date": TODAY, "quantity_used": 2.0,
          "notes": "", "created_by": "staff-001", "created_by_name": "Lokesh",
-         "created_at": "2026-05-31T10:05:00+00:00",
+         "created_at": iso(now_utc()),
          "is_void": False, "voided_by": None, "voided_at": None, "void_reason": None},
         {"id": "use-003", "item_id": "item-003", "date": TODAY, "quantity_used": 1.0,
          "notes": "", "created_by": "staff-001", "created_by_name": "Lokesh",
-         "created_at": "2026-05-31T10:10:00+00:00",
+         "created_at": iso(now_utc()),
          "is_void": False, "voided_by": None, "voided_at": None, "void_reason": None},
     ])
 
@@ -157,7 +160,7 @@ async def seed_db():
         "lunch_amount": 3000.0, "dinner_amount": 5000.0, "other_amount": 500.0,
         "total_amount": 8500.0, "notes": "",
         "created_by": "admin-001", "created_by_name": "Jaya Sai",
-        "created_at": "2026-05-31T21:00:00+00:00",
+        "created_at": iso(now_utc()),
     })
 
     # Seed expenses (Gas 500)
@@ -165,7 +168,7 @@ async def seed_db():
         "id": "exp-001", "date": TODAY, "category": "Gas",
         "description": "LPG refill", "amount": 500.0,
         "created_by": "admin-001", "created_by_name": "Jaya Sai",
-        "created_at": "2026-05-31T08:00:00+00:00",
+        "created_at": iso(now_utc()),
         "is_void": False, "voided_by": None, "voided_at": None, "void_reason": None,
     })
 
