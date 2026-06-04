@@ -17,7 +17,7 @@ export function clearToken() {
   localStorage.removeItem("sp_token");
 }
 
-const api = axios.create({ baseURL: API, withCredentials: true });
+const api = axios.create({ baseURL: API }); // No withCredentials - using Bearer token
 
 // Attach token to every request
 api.interceptors.request.use((config) => {

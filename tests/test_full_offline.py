@@ -496,9 +496,13 @@ class TestBusinessRules:
         assert "401" in src
         assert "/login" in src
 
-    def test_api_uses_withcredentials(self):
+    def test_api_uses_bearer_token_auth(self):
+        """Auth uses Bearer token (localStorage) not cookies — no withCredentials needed"""
         src = (SRC / "lib/api.js").read_text()
-        assert "withCredentials: true" in src
+        assert "Authorization" in src
+        assert "Bearer" in src
+        assert "localStorage" in src
+        assert "withCredentials: true" not in src  # removed - Bearer token handles auth
 
     def test_whatsapp_log_only_mode(self):
         src = BACKEND.read_text()

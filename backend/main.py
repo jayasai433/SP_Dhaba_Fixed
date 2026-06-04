@@ -22,10 +22,14 @@ from routers.whatsapp  import router as whatsapp_router
 app = FastAPI(title="SP Royal Punjabi Dhaba — Operations Manager")
 
 # ── CORS ──────────────────────────────────────────────────────────────────
+# CORS: credentials require specific origins (not "*")
+_cors_origins = CORS_ORIGINS if CORS_ORIGINS != ["*"] else ["*"]
+_allow_creds  = CORS_ORIGINS != ["*"]  # credentials only work with specific origins
+
 app.add_middleware(
     CORSMiddleware,
-    allow_credentials=True,
-    allow_origins=CORS_ORIGINS,
+    allow_credentials=_allow_creds,
+    allow_origins=_cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
