@@ -18,6 +18,7 @@ const STATUS_META = {
 
 export default function LiveStock() {
   const [stock, setStock] = useState(null);
+  const [error, setError] = useState(false);
   const [q, setQ] = useState("");
   const [cat, setCat] = useState("all");
   const [status, setStatus] = useState("all");

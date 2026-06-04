@@ -3,6 +3,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { BusinessProfileProvider } from "@/contexts/BusinessProfileContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import ErrorBoundary from "@/components/ErrorBoundary";
 import Layout from "@/components/Layout";
 import Login from "@/pages/Login";
 import Forbidden from "@/pages/Forbidden";
@@ -31,54 +32,56 @@ function RootRedirect() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <BusinessProfileProvider>
-        <BrowserRouter>
-          <Toaster richColors position="top-right" />
+    <ErrorBoundary>
+      <AuthProvider>
+        <BusinessProfileProvider>
+          <BrowserRouter>
+            <Toaster richColors position="top-right" />
           <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/forbidden" element={<Forbidden />} />
-          <Route path="/" element={<RootRedirect />} />
+          <Route path="/login" element={<ErrorBoundary><Login /></ErrorBoundary>} />
+          <Route path="/forbidden" element={<ErrorBoundary><Forbidden /></ErrorBoundary>} />
+          <Route path="/" element={<ErrorBoundary><RootRedirect /></ErrorBoundary>} />
 
           <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
             <Route path="/dashboard" element={
-              <ProtectedRoute roles={["admin", "viewer"]}><Dashboard /></ProtectedRoute>
+              <ProtectedRoute roles={["admin", "viewer"]}><ErrorBoundary><Dashboard /></ErrorBoundary></ProtectedRoute>
             } />
-            <Route path="/stock" element={<LiveStock />} />
-            <Route path="/alerts" element={<Alerts />} />
+            <Route path="/stock" element={<ErrorBoundary><LiveStock /></ErrorBoundary>} />
+            <Route path="/alerts" element={<ErrorBoundary><Alerts /></ErrorBoundary>} />
             <Route path="/purchases" element={
-              <ProtectedRoute roles={["admin", "staff", "viewer"]}><Purchases /></ProtectedRoute>
+              <ProtectedRoute roles={["admin", "staff", "viewer"]}><ErrorBoundary><Purchases /></ErrorBoundary></ProtectedRoute>
             } />
             <Route path="/usage" element={
-              <ProtectedRoute roles={["admin", "staff", "viewer"]}><DailyUsage /></ProtectedRoute>
+              <ProtectedRoute roles={["admin", "staff", "viewer"]}><ErrorBoundary><DailyUsage /></ErrorBoundary></ProtectedRoute>
             } />
             <Route path="/sales" element={
-              <ProtectedRoute roles={["admin", "staff", "viewer"]}><Sales /></ProtectedRoute>
+              <ProtectedRoute roles={["admin", "staff", "viewer"]}><ErrorBoundary><Sales /></ErrorBoundary></ProtectedRoute>
             } />
             <Route path="/items" element={
-              <ProtectedRoute roles={["admin"]}><Items /></ProtectedRoute>
+              <ProtectedRoute roles={["admin"]}><ErrorBoundary><Items /></ErrorBoundary></ProtectedRoute>
             } />
             <Route path="/expenses" element={
-              <ProtectedRoute roles={["admin", "staff", "viewer"]}><Expenses /></ProtectedRoute>
+              <ProtectedRoute roles={["admin", "staff", "viewer"]}><ErrorBoundary><Expenses /></ErrorBoundary></ProtectedRoute>
             } />
             <Route path="/salaries" element={
-              <ProtectedRoute roles={["admin", "viewer"]}><Salaries /></ProtectedRoute>
+              <ProtectedRoute roles={["admin", "viewer"]}><ErrorBoundary><Salaries /></ErrorBoundary></ProtectedRoute>
             } />
             <Route path="/pnl" element={
-              <ProtectedRoute roles={["admin", "viewer"]}><PnL /></ProtectedRoute>
+              <ProtectedRoute roles={["admin", "viewer"]}><ErrorBoundary><PnL /></ErrorBoundary></ProtectedRoute>
             } />
             <Route path="/settings" element={
-              <ProtectedRoute roles={["admin"]}><Settings /></ProtectedRoute>
+              <ProtectedRoute roles={["admin"]}><ErrorBoundary><Settings /></ErrorBoundary></ProtectedRoute>
             } />
             <Route path="/display" element={
-              <ProtectedRoute roles={["admin", "viewer"]}><DisplayMode /></ProtectedRoute>
+              <ProtectedRoute roles={["admin", "viewer"]}><ErrorBoundary><DisplayMode /></ErrorBoundary></ProtectedRoute>
             } />
           </Route>
 
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<ErrorBoundary><Navigate to="/" replace /></ErrorBoundary>} />
           </Routes>
         </BrowserRouter>
       </BusinessProfileProvider>
     </AuthProvider>
+    </ErrorBoundary>
   );
 }

@@ -10,6 +10,7 @@ import { SKELETON_KEYS } from "@/lib/skeletons";
 
 export default function Alerts() {
   const [alerts, setAlerts] = useState(null);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     const load = () => api.get("/alerts").then(({ data }) => setAlerts(data)).catch(() => setError(true));
