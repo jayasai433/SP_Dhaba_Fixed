@@ -11,7 +11,7 @@ import { formatApiError } from "@/lib/api";
 import { Eye, EyeOff, LogIn } from "lucide-react";
 
 // Background image — Indian food/dhaba themed (Unsplash, free to use)
-const BG = "https://images.unsplash.com/photo-1567188040759-fb8a883dc6d8?w=1200&q=80";
+const BG = "https://static.prod-images.emergentagent.com/jobs/f68fc50c-9f59-4269-9dfe-a9e0ce5b55d2/images/919311037b7ede6c209aa3ca33ec36a221357d00035ce1a4bed257be277dedcc.png";
 // Fallback: orange gradient if image fails to load
 
 export default function Login() {
@@ -73,7 +73,6 @@ export default function Login() {
         />
         <div className="absolute inset-0 bg-gradient-to-br from-[#2D1606]/85 via-[#2D1606]/60 to-transparent" />
         <div className="relative h-full flex flex-col justify-end p-12 text-white">
-          <div className="mb-3 text-xs tracking-[0.3em] uppercase text-orange-200">{bizName.split(" ")[0] || "SP Royal"}</div>
           <h1 className="font-display text-5xl font-bold leading-tight max-w-md">
             {bizName}
           </h1>
