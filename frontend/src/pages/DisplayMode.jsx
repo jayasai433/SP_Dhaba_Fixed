@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import api from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBusinessProfile } from "@/contexts/BusinessProfileContext";
@@ -24,7 +25,8 @@ async function requestWakeLock() {
 }
 
 export default function DisplayMode() {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
+  const navigate = useNavigate();
   const { profile } = useBusinessProfile();
   const [stock, setStock] = useState([]);
   const [today, setToday] = useState(0);
@@ -56,6 +58,16 @@ export default function DisplayMode() {
     return () => { clearInterval(t1); clearInterval(t2); };
   }, [load]);
 
+  // Prevent screen from dimming in Display Mode
+  useEffect(() => {
+    requestWakeLock();
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") requestWakeLock();
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, []);
+
   const fullscreen = (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -64,6 +76,20 @@ export default function DisplayMode() {
     } else {
       document.documentElement.requestFullscreen().catch((err) => console.error(err));
     }
+  };
+
+  const exitDisplay = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Exit fullscreen first if active, then navigate to home
+    if (document.fullscreenElement) {
+      try { await document.exitFullscreen(); } catch (err) { console.error(err); }
+    }
+    // Navigate based on role - never logout
+    const role = user?.role;
+    if (role === "staff") navigate("/stock");
+    else if (role === "admin") navigate("/dashboard");
+    else navigate("/dashboard");
   };
 
   const counts = stock.reduce((acc, s) => { acc[s.status] = (acc[s.status] || 0) + 1; return acc; }, { in: 0, low: 0, out: 0 });
@@ -81,7 +107,7 @@ export default function DisplayMode() {
         </div>
         <div className="flex gap-2">
           <Button variant="ghost" onClick={fullscreen} data-testid="display-fullscreen" className="text-white hover:bg-white/10 rounded-full"><Maximize2 size={16} className="mr-2" />Fullscreen</Button>
-          <Button variant="ghost" onClick={logout} data-testid="display-logout" className="text-white hover:bg-white/10 rounded-full"><LogOut size={16} className="mr-2" />Exit</Button>
+          <Button variant="ghost" onClick={exitDisplay} data-testid="display-exit" className="text-white hover:bg-white/10 rounded-full"><LogOut size={16} className="mr-2" />Exit</Button>
         </div>
       </div>
 

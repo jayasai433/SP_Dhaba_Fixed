@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
-import api from "@/lib/api";
+import api, { formatApiError } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,6 +20,10 @@ export default function Sales() {
   const [other, setOther] = useState("");
   const [notes, setNotes] = useState("");
   const [duplicate, setDuplicate] = useState(null);
+  const [editing, setEditing] = useState(false);
+  const [saving2, setSaving2] = useState(false);
+  const { user } = useAuth();
+  const canEdit = user?.role === "admin";
 
   const load = useCallback(() => { api.get("/sales").then(({ data }) => setRows(data)).catch((err) => console.error(err)); }, []);
   useEffect(() => { load(); }, [load]);
@@ -40,6 +45,27 @@ export default function Sales() {
     }),
     { successMessage: "Sales saved", onSuccess: () => { setLunch(""); setDinner(""); setOther(""); setNotes(""); load(); } }
   );
+
+  const updateSales = async (e) => {
+    e.preventDefault();
+    if (!duplicate?.id) return;
+    setSaving2(true);
+    try {
+      await api.patch(`/sales/${duplicate.id}`, {
+        date,
+        lunch_amount: parseFloat(lunch || 0),
+        dinner_amount: parseFloat(dinner || 0),
+        other_amount: parseFloat(other || 0),
+        notes: notes || "",
+      });
+      toast.success("Sales entry updated successfully");
+      setEditing(false);
+      setLunch(""); setDinner(""); setOther(""); setNotes("");
+      load();
+      api.get(`/sales/check/${date}`).then(({ data }) => setDuplicate(data.exists ? data.entry : null)).catch(() => setDuplicate(null));
+    } catch (err) { toast.error(formatApiError(err)); }
+    finally { setSaving2(false); }
+  };
 
   const submit = (e) => {
     e.preventDefault();
@@ -140,10 +166,18 @@ export default function Sales() {
               </div>
             )}
             <div className="md:col-span-12">
-              <Button type="submit" onClick={editing ? updateSales : undefined} disabled={saving || (!!duplicate && !editing)} data-testid="sales-submit-button"
-                className="rounded-full bg-orange-600 hover:bg-orange-700 px-6 active:scale-95">
-                {saving ? "Saving..." : "Save Sales"}
-              </Button>
+              <div className="flex gap-2">
+                <Button type="submit" onClick={editing ? updateSales : undefined} disabled={saving || saving2 || (!!duplicate && !editing)} data-testid="sales-submit-button"
+                  className="rounded-full bg-orange-600 hover:bg-orange-700 px-6 active:scale-95">
+                  {(saving || saving2) ? "Saving..." : editing ? "Update Sales" : "Save Sales"}
+                </Button>
+                {editing && (
+                  <Button type="button" variant="outline" onClick={() => { setEditing(false); setLunch(""); setDinner(""); setOther(""); setNotes(""); }}
+                    className="rounded-full border-orange-200 text-orange-700">
+                    Cancel
+                  </Button>
+                )}
+              </div>
             </div>
           </form>
         </CardContent>
