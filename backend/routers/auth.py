@@ -19,7 +19,10 @@ COOKIE_MAX_AGE = TOKEN_TTL_HOURS * 3600
 # ── Auth ──────────────────────────────────────────────────────────────────
 @router.post("/auth/login")
 async def login(payload: LoginIn, response: Response, request: Request):
-    _check_rate_limit(request.client.host if request.client else "unknown")
+    _check_rate_limit(
+        request.client.host if request.client else "unknown",
+        payload.email  # dual rate limiting by IP + email
+    )
     user = await db.users.find_one({"email": payload.email.lower()})
     if not user or not user.get("is_active", True):
         raise HTTPException(status_code=401, detail="Invalid email or password")
@@ -70,7 +73,9 @@ async def create_user(payload: UserCreateIn, user=Depends(require_roles("admin")
 @router.patch("/users/{user_id}", response_model=UserOut)
 async def update_user(user_id: str, payload: UserUpdateIn,
                       user=Depends(require_roles("admin"))):
-    update = {k: v for k, v in payload.dict().items() if v is not None}
+    # Explicitly whitelist updatable fields — prevent mass assignment
+    allowed = {"name": payload.name, "role": payload.role, "is_active": payload.is_active}
+    update  = {k: v for k, v in allowed.items() if v is not None}
     if update:
         await db.users.update_one({"id": user_id}, {"$set": update})
     doc = await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0})

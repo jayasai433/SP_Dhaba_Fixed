@@ -23,6 +23,7 @@ app = FastAPI(title="SP Royal Punjabi Dhaba — Operations Manager")
 
 # ── Security Headers ──────────────────────────────────────────────────────
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.requests import Request
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -31,9 +32,17 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
         return response
 
 app.add_middleware(SecurityHeadersMiddleware)
+
+# Trust Railway's proxy — prevents X-Forwarded-For spoofing
+# Railway acts as trusted proxy, so client IP is correct
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
 
 # ── CORS ──────────────────────────────────────────────────────────────────
 # CORS: credentials require specific origins (not "*")
