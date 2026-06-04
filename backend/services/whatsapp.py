@@ -7,6 +7,14 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from core.db import db
+
+async def _get_biz_name() -> str:
+    """Fetch business name from DB — always current, never stale."""
+    try:
+        doc = await db.business_profile.find_one({"key": "main"}, {"name": 1})
+        return doc.get("name", "SP Royal Dhaba") if doc else "SP Royal Dhaba"
+    except Exception:
+        return "SP Royal Dhaba"
 from core.config import IST
 from core.utils import now_utc, iso
 
@@ -66,12 +74,12 @@ async def maybe_notify_after_purchase(item: dict, purchase_doc: dict):
     settings = await db.whatsapp_settings.find_one({"key": "main"}) or {}
     if settings.get("notify_large_purchase") and \
        purchase_doc["total_cost"] >= float(settings.get("large_purchase_threshold", 5000)):
-        body = (f"💸 SP Royal Dhaba — Large Purchase\n"
+        body = (f"💸 {biz} — Large Purchase\n"
                 f"Item: {item['name']}\n"
                 f"Qty: {purchase_doc['quantity']} {item['unit']}\n"
                 f"Total: ₹{purchase_doc['total_cost']:,.2f}\n"
                 f"By: {purchase_doc.get('created_by_name', '')}\n"
-                f"— SP Royal Ops Manager")
+                f"— {biz} Ops Manager")
         await _wa_broadcast(body, "large_purchase")
 
 async def check_stock_alerts_for_item(item_id: str):
@@ -94,14 +102,14 @@ async def check_stock_alerts_for_item(item_id: str):
     left    = round(bought - used, 3)
     reorder = float(item.get("reorder_level", 0))
     if left <= 0 and settings.get("notify_out_of_stock"):
-        body = (f"🔴 SP Royal Dhaba Alert\nItem: {item['name']}\n"
+        body = (f"🔴 {biz} Alert\nItem: {item['name']}\n"
                 f"Status: Out of Stock\nQty Left: 0 {item['unit']}\n"
-                f"Action: Buy Today!\n— SP Royal Ops Manager")
+                f"Action: Buy Today!\n— {biz} Ops Manager")
         await _wa_broadcast(body, "stock_out")
     elif 0 < left < reorder and settings.get("notify_low_stock"):
-        body = (f"🟡 SP Royal Dhaba Alert\nItem: {item['name']}\n"
+        body = (f"🟡 {biz} Alert\nItem: {item['name']}\n"
                 f"Status: Low Stock\nQty Left: {left} {item['unit']} (reorder at {reorder})\n"
-                f"— SP Royal Ops Manager")
+                f"— {biz} Ops Manager")
         await _wa_broadcast(body, "stock_low")
 
 # ── Scheduled jobs ────────────────────────────────────────────────────────
@@ -123,10 +131,11 @@ async def job_morning_report():
         elif left < reorder:  low.append(it["name"])
         else:                 in_s += 1
     today_str = datetime.now(IST).strftime("%d-%b-%Y")
-    body = (f"📦 SP Royal Morning Stock Report\nDate: {today_str}\n\n"
+    biz = await _get_biz_name()
+    body = (f"📦 {biz} Morning Stock Report\nDate: {today_str}\n\n"
             f"🔴 Out of Stock ({len(out)}): {', '.join(out) if out else 'None'}\n"
             f"🟡 Low Stock ({len(low)}): {', '.join(low) if low else 'None'}\n"
-            f"🟢 In Stock: {in_s} items\n— SP Royal Ops Manager")
+            f"🟢 In Stock: {in_s} items\n— {biz} Ops Manager")
     settings = await db.whatsapp_settings.find_one({"key": "main"}) or {}
     if settings.get("notify_morning_report"):
         await _wa_broadcast(body, "morning_report")
@@ -144,18 +153,19 @@ async def job_daily_report():
     cogs      = sum(p["total_cost"] for p in purchases)
     net       = s_total - cogs - exp_total
     icon      = "✅" if net >= 0 else "❌"
-    body = (f"💰 SP Royal Daily Report\nDate: {datetime.now(IST).strftime('%d-%b-%Y')}\n\n"
+    biz = await _get_biz_name()
+    body = (f"💰 {biz} Daily Report\nDate: {datetime.now(IST).strftime('%d-%b-%Y')}\n\n"
             f"SALES\nLunch: ₹{s_lunch:,.2f}\nDinner: ₹{s_dinner:,.2f}\n"
             f"Other: ₹{s_other:,.2f}\nTotal: ₹{s_total:,.2f}\n\n"
             f"PURCHASES: ₹{cogs:,.2f}\nEXPENSES: ₹{exp_total:,.2f}\n"
-            f"NET P&L: ₹{net:,.2f} {icon}\n— SP Royal Ops Manager")
+            f"NET P&L: ₹{net:,.2f} {icon}\n— {biz} Ops Manager")
     settings = await db.whatsapp_settings.find_one({"key": "main"}) or {}
     if settings.get("notify_daily_report"):
         await _wa_broadcast(body, "daily_report")
     if net < 0 and settings.get("notify_daily_loss"):
         await _wa_broadcast(
-            f"⚠️ SP Royal Daily LOSS Alert\nDate: {datetime.now(IST).strftime('%d-%b-%Y')}\n"
-            f"Net Loss: ₹{abs(net):,.2f}\n— SP Royal Ops Manager", "daily_loss")
+            f"⚠️ {biz} Daily LOSS Alert\nDate: {datetime.now(IST).strftime('%d-%b-%Y')}\n"
+            f"Net Loss: ₹{abs(net):,.2f}\n— {biz} Ops Manager", "daily_loss")
 
 async def job_no_sales_reminder():
     today    = datetime.now(IST).strftime("%Y-%m-%d")
@@ -165,9 +175,10 @@ async def job_no_sales_reminder():
     settings = await db.whatsapp_settings.find_one({"key": "main"}) or {}
     if not settings.get("notify_no_sales_reminder"):
         return
-    body = (f"⏰ SP Royal Reminder\nNo sales entry recorded for "
+    biz = await _get_biz_name()
+    body = (f"⏰ {biz} Reminder\nNo sales entry recorded for "
             f"{datetime.now(IST).strftime('%d-%b-%Y')} yet.\n"
-            f"Please log today's sales before closing.\n— SP Royal Ops Manager")
+            f"Please log today's sales before closing.\n— {biz} Ops Manager")
     await _wa_broadcast(body, "no_sales_reminder")
 
 # ── Scheduler lifecycle ───────────────────────────────────────────────────

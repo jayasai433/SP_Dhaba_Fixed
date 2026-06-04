@@ -52,10 +52,12 @@ async def test_wa_number(payload: WhatsAppTestIn, user=Depends(require_roles("ad
     n = await db.whatsapp_numbers.find_one({"id": payload.number_id})
     if not n:
         raise HTTPException(404, "Number not found")
-    body = (f"✅ SP Royal Dhaba — Test Message\n"
+    biz_doc = await db.business_profile.find_one({"key": "main"})
+    biz = biz_doc.get("name", "SP Royal Dhaba") if biz_doc else "SP Royal Dhaba"
+    body = (f"✅ {biz} — Test Message\n"
             f"Sent to: {n['name']} ({n['phone']})\n"
             f"Time: {datetime.now(IST).strftime('%d-%b-%Y %H:%M IST')}\n"
-            f"— SP Royal Ops Manager")
+            f"— {biz} Ops Manager")
     await _wa_send_to_number(n["phone"], body, "test")
     last = await db.notifications.find_one(
         {"to": n["phone"], "type": "test"}, {"_id": 0}, sort=[("created_at", -1)])

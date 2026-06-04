@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import axios from "axios";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,6 +20,16 @@ export default function Login() {
   const { login, user } = useAuth();
   const navigate = useNavigate();
   const loc = useLocation();
+  const [bizName, setBizName] = useState("SP Royal Punjabi Family Dhaba");
+
+  useEffect(() => {
+    const backendUrl = process.env.REACT_APP_BACKEND_URL;
+    if (backendUrl) {
+      axios.get(`${backendUrl}/api/business-profile`)
+        .then(({ data }) => { if (data?.name) setBizName(data.name); })
+        .catch(() => {}); // use default if fetch fails
+    }
+  }, []);
 
   useEffect(() => {
     if (user) {
@@ -50,9 +61,9 @@ export default function Login() {
         <div className="absolute inset-0 bg-gradient-to-br from-[#2D1606] via-[#5C1E0A] to-[#8B3A0F]" />
         <div className="absolute inset-0" style={{backgroundImage: "radial-gradient(circle at 20% 80%, rgba(255,140,0,0.15) 0%, transparent 60%), radial-gradient(circle at 80% 20%, rgba(255,80,0,0.1) 0%, transparent 60%)"}} />
         <div className="relative h-full flex flex-col justify-end p-12 text-white">
-          <div className="mb-3 text-xs tracking-[0.3em] uppercase text-orange-200">SP Royal</div>
+          <div className="mb-3 text-xs tracking-[0.3em] uppercase text-orange-200">{bizName.split(" ")[0] || "SP Royal"}</div>
           <h1 className="font-display text-5xl font-bold leading-tight max-w-md">
-            Punjabi Family Dhaba
+            {bizName}
           </h1>
           <p className="mt-3 text-orange-100/80 max-w-md">
             Operations Manager — Track purchases, usage, sales and live stock all in one place.
@@ -69,7 +80,7 @@ export default function Login() {
                 SP
               </div>
               <div>
-                <div className="font-display font-bold text-slate-900 text-lg leading-tight">SP Royal Dhaba</div>
+                <div className="font-display font-bold text-slate-900 text-lg leading-tight">{bizName}</div>
                 <div className="text-xs text-slate-500">Sign in to continue</div>
               </div>
             </div>

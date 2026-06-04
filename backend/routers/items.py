@@ -111,7 +111,8 @@ async def update_unit(unit_id: str, payload: dict, user=Depends(require_roles("a
 
 # ── Business Profile ──────────────────────────────────────────────────────
 @router.get("/business-profile")
-async def get_business_profile(user=Depends(get_current_user)):
+async def get_business_profile():
+    """Public endpoint — needed for login page to show business name"""
     doc = await db.business_profile.find_one({"key": "main"}, {"_id": 0})
     return doc or {}
 

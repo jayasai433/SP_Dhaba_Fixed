@@ -520,10 +520,11 @@ class TestBugFixes:
         assert "SP Royal Punjabi Dhaba" not in src
 
     def test_bug1_login_page_name_source(self):
-        """Login page header uses hardcoded text (acceptable — it's a brand label)"""
+        """Login page fetches business name dynamically from API"""
         src = (SRC / "pages/Login.jsx").read_text()
-        # Login page is OK to have static brand name in visual section
-        assert "Punjabi" in src  # brand identity
+        # Business name now fetched from /api/business-profile dynamically
+        assert "bizName" in src        # dynamic state variable
+        assert "business-profile" in src  # fetches from API endpoint
 
     def test_bug2_dailyusage_grid_columns(self):
         """Bug #2: Field misalignment in Daily Usage — check md:col-span values sum to 12"""
