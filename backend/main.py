@@ -17,7 +17,8 @@ from routers.stock         import router as stock_router
 from routers.pnl           import router as pnl_router
 from routers.salaries      import router as salaries_router
 from routers.whatsapp      import router as whatsapp_router
-from routers.closing_stock import router as closing_stock_router
+from routers.closing_stock      import router as closing_stock_router
+from routers.inventory_insights import router as inventory_insights_router
 
 # ── App ───────────────────────────────────────────────────────────────────
 app = FastAPI(title="SP Royal Punjabi Dhaba — Operations Manager")
@@ -63,7 +64,7 @@ PREFIX = "/api"
 for router in [
     auth_router, items_router, purchases_router, usage_router,
     sales_router, expenses_router, stock_router, pnl_router,
-    salaries_router, whatsapp_router, closing_stock_router,
+    salaries_router, whatsapp_router, closing_stock_router, inventory_insights_router,
 ]:
     app.include_router(router, prefix=PREFIX)
 

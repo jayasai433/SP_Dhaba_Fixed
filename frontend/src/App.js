@@ -16,7 +16,8 @@ import Sales from "@/pages/Sales";
 import Items from "@/pages/Items";
 import Settings from "@/pages/Settings";
 import DisplayMode    from "@/pages/DisplayMode";
-import ClosingStock   from "@/pages/ClosingStock";
+import ClosingStock       from "@/pages/ClosingStock";
+import InventoryInsights  from "@/pages/InventoryInsights";
 import Expenses from "@/pages/Expenses";
 import Salaries from "@/pages/Salaries";
 import PnL from "@/pages/PnL";
@@ -78,6 +79,9 @@ export default function App() {
             } />
             <Route path="/closing-stock" element={
               <ProtectedRoute roles={["admin", "staff", "viewer"]}><ErrorBoundary><ClosingStock /></ErrorBoundary></ProtectedRoute>
+            } />
+            <Route path="/inventory-insights" element={
+              <ProtectedRoute roles={["admin", "viewer"]}><ErrorBoundary><InventoryInsights /></ErrorBoundary></ProtectedRoute>
             } />
           </Route>
 
