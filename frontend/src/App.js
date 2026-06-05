@@ -15,7 +15,8 @@ import DailyUsage from "@/pages/DailyUsage";
 import Sales from "@/pages/Sales";
 import Items from "@/pages/Items";
 import Settings from "@/pages/Settings";
-import DisplayMode from "@/pages/DisplayMode";
+import DisplayMode    from "@/pages/DisplayMode";
+import ClosingStock   from "@/pages/ClosingStock";
 import Expenses from "@/pages/Expenses";
 import Salaries from "@/pages/Salaries";
 import PnL from "@/pages/PnL";
@@ -74,6 +75,9 @@ export default function App() {
             } />
             <Route path="/display" element={
               <ProtectedRoute roles={["admin", "viewer", "staff"]}><ErrorBoundary><DisplayMode /></ErrorBoundary></ProtectedRoute>
+            } />
+            <Route path="/closing-stock" element={
+              <ProtectedRoute roles={["admin", "staff", "viewer"]}><ErrorBoundary><ClosingStock /></ErrorBoundary></ProtectedRoute>
             } />
           </Route>
 

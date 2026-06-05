@@ -7,16 +7,17 @@ from core.db import client
 from services.seed import seed
 from services.whatsapp import start_scheduler, stop_scheduler
 
-from routers.auth      import router as auth_router
-from routers.items     import router as items_router
-from routers.purchases import router as purchases_router
-from routers.usage     import router as usage_router
-from routers.sales     import router as sales_router
-from routers.expenses  import router as expenses_router
-from routers.stock     import router as stock_router
-from routers.pnl       import router as pnl_router
-from routers.salaries  import router as salaries_router
-from routers.whatsapp  import router as whatsapp_router
+from routers.auth          import router as auth_router
+from routers.items         import router as items_router
+from routers.purchases     import router as purchases_router
+from routers.usage         import router as usage_router
+from routers.sales         import router as sales_router
+from routers.expenses      import router as expenses_router
+from routers.stock         import router as stock_router
+from routers.pnl           import router as pnl_router
+from routers.salaries      import router as salaries_router
+from routers.whatsapp      import router as whatsapp_router
+from routers.closing_stock import router as closing_stock_router
 
 # ── App ───────────────────────────────────────────────────────────────────
 app = FastAPI(title="SP Royal Punjabi Dhaba — Operations Manager")
@@ -62,7 +63,7 @@ PREFIX = "/api"
 for router in [
     auth_router, items_router, purchases_router, usage_router,
     sales_router, expenses_router, stock_router, pnl_router,
-    salaries_router, whatsapp_router,
+    salaries_router, whatsapp_router, closing_stock_router,
 ]:
     app.include_router(router, prefix=PREFIX)
 

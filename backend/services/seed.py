@@ -90,6 +90,10 @@ async def _seed_indexes():
         # Salaries: fast lookup by paid_date for P&L
         db.salaries.create_index([("paid_date", 1)]),
         db.salaries.create_index([("staff_id", 1), ("month", 1)], unique=True),
+        # Closing stock: one entry per item per date + wastage queries
+        db.closing_stock.create_index([("item_id", 1), ("date", 1)], unique=True),
+        db.closing_stock.create_index([("date", -1)]),
+        db.closing_stock.create_index([("wastage_flag", 1), ("date", -1)]),
         # Notifications
         db.notifications.create_index([("created_at", -1)]),
         db.notifications.create_index("status"),

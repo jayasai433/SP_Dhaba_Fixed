@@ -29,8 +29,8 @@ const NAV = [
 ];
 
 const MOBILE_NAV_BY_ROLE = {
-  admin: ["/dashboard", "/stock", "/purchases", "/sales", "/pnl"],
-  staff: ["/stock", "/purchases", "/usage", "/sales", "/expenses", "/display"],
+  admin: ["/dashboard", "/stock", "/purchases", "/sales", "/closing-stock"],
+  staff: ["/stock", "/purchases", "/usage", "/sales", "/expenses", "/closing-stock", "/display"],
   viewer: ["/dashboard", "/stock", "/alerts", "/pnl", "/display"],
 };
 
