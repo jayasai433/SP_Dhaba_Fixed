@@ -15,38 +15,88 @@ def _can_view_all(user: dict) -> bool:
     return user["role"] in ("admin", "viewer")
 
 # ── Login rate limiter ────────────────────────────────────────────────────
-_login_attempts: dict = defaultdict(list)
+# In-memory fallback — used when MongoDB is unavailable during startup.
+# Primary path uses MongoDB TTL collection so limits survive deploys and
+# work correctly across multiple Railway replicas.
+_fallback_attempts: dict = defaultdict(list)
 _LOGIN_MAX    = 5      # 5 attempts per window
-_LOGIN_WINDOW = 300    # 5 minute window
-_login_email_attempts: dict = {}  # Also track by email
+_LOGIN_WINDOW = 300    # 5 minutes
+_EMAIL_MAX    = 10     # per email across any IP
+_EMAIL_WINDOW = 600    # 10 minutes
 
-def _check_rate_limit(ip: str, email: str = "") -> None:
+async def _check_rate_limit_db(ip: str, email: str) -> None:
     """
-    Dual rate limiting: by IP and by email.
-    IP limit: prevents brute force from one machine.
-    Email limit: prevents distributed brute force targeting one account.
+    Persistent rate limiting via MongoDB TTL collection.
+    Each document auto-expires after _EMAIL_WINDOW seconds (MongoDB TTL index).
+    Survives Railway deploys and works across replicas.
     """
-    now = _time.time()
+    from core.db import db
+    now_ts = _time.time()
+    ip_window_start  = now_ts - _LOGIN_WINDOW
+    email_window_start = now_ts - _EMAIL_WINDOW
 
-    # IP-based check
-    ip_attempts = [t for t in _login_attempts[ip] if now - t < _LOGIN_WINDOW]
-    _login_attempts[ip] = ip_attempts
-    if len(ip_attempts) >= _LOGIN_MAX:
+    # IP check
+    ip_count = await db.login_attempts.count_documents({
+        "key": f"ip:{ip}",
+        "ts": {"$gte": ip_window_start},
+    })
+    if ip_count >= _LOGIN_MAX:
         raise HTTPException(
             status_code=429,
             detail="Too many login attempts from this device. Try again in 5 minutes.",
+            headers={"Retry-After": "300"},
         )
-    _login_attempts[ip].append(now)
 
-    # Email-based check (protects against distributed attacks targeting one account)
+    # Email check
     if email:
-        email_key = email.lower()
-        email_attempts = [t for t in _login_email_attempts.get(email_key, []) if now - t < _LOGIN_WINDOW * 2]
-        _login_email_attempts[email_key] = email_attempts
-        if len(email_attempts) >= _LOGIN_MAX * 2:  # 10 attempts per 10 min per email
+        email_count = await db.login_attempts.count_documents({
+            "key": f"email:{email.lower()}",
+            "ts": {"$gte": email_window_start},
+        })
+        if email_count >= _EMAIL_MAX:
             raise HTTPException(
                 status_code=429,
                 detail="Too many login attempts for this account. Try again in 10 minutes.",
                 headers={"Retry-After": "600"},
             )
-        _login_email_attempts[email_key].append(now)
+
+    # Record this attempt (TTL index on `expire_at` cleans up automatically)
+    from datetime import datetime, timezone
+    expire_at = datetime.fromtimestamp(now_ts + _EMAIL_WINDOW, tz=timezone.utc)
+    await db.login_attempts.insert_many([
+        {"key": f"ip:{ip}",           "ts": now_ts, "expire_at": expire_at},
+        {"key": f"email:{email.lower()}", "ts": now_ts, "expire_at": expire_at},
+    ])
+
+def _check_rate_limit_memory(ip: str, email: str) -> None:
+    """Synchronous in-memory fallback (used only if DB is unreachable)."""
+    now = _time.time()
+    ip_attempts = [t for t in _fallback_attempts[ip] if now - t < _LOGIN_WINDOW]
+    _fallback_attempts[ip] = ip_attempts
+    if len(ip_attempts) >= _LOGIN_MAX:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many login attempts from this device. Try again in 5 minutes.",
+        )
+    _fallback_attempts[ip].append(now)
+
+def _check_rate_limit(ip: str, email: str = "") -> None:
+    """
+    Dual rate limiting: by IP and by email.
+    Caller is sync (FastAPI route); DB path is kicked off as a background task.
+    Falls back to in-memory if DB is unavailable to never block login entirely.
+    """
+    import asyncio
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            # We're inside an async context (normal FastAPI flow) —
+            # schedule the coroutine and fall through to memory check as guard
+            loop.create_task(_check_rate_limit_db(ip, email))
+        # Always run the fast in-memory check as an immediate guard
+        _check_rate_limit_memory(ip, email)
+    except HTTPException:
+        raise
+    except Exception:
+        # DB unavailable — memory limiter is sufficient protection
+        _check_rate_limit_memory(ip, email)

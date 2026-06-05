@@ -11,6 +11,7 @@ import { fmtDate, fmtTimestamp, todayIST } from "@/lib/format";
 import { Plus, X, ChefHat, Ban } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import DuplicateWarningDialog from "@/components/DuplicateWarningDialog";
+import VoidDialog from "@/components/VoidDialog";
 
 export default function DailyUsage() {
   const { user } = useAuth();
@@ -21,6 +22,7 @@ export default function DailyUsage() {
   const [date, setDate] = useState(todayIST());
   const [entries, setEntries] = useState([{ rid: crypto.randomUUID(), item_id: "", qty: "", notes: "" }]);
   const [saving, setSaving] = useState(false);
+  const [voidDialogId, setVoidDialogId] = useState(null);
   const [dupDialog, setDupDialog] = useState(false);
   const [pendingEntries, setPendingEntries] = useState([]);
 
@@ -92,11 +94,13 @@ export default function DailyUsage() {
     await _saveEntries(valid);
   };
 
-  const voidRow = async (id) => {
-    const reason = window.prompt("Reason for voiding this entry (required):");
-    if (!reason?.trim()) return;
+  const voidRow = (id) => setVoidDialogId(id);
+
+  const handleVoidConfirm = async (reason) => {
+    const id = voidDialogId;
+    setVoidDialogId(null);
     try {
-      await api.patch(`/usage/${id}/void`, { reason: reason.trim() });
+      await api.patch(`/usage/${id}/void`, { reason });
       toast.success("Entry voided");
       load();
     } catch (err) { toast.error(formatApiError(err)); }
@@ -111,6 +115,12 @@ export default function DailyUsage() {
         onConfirm={confirmDuplicate}
         onCancel={cancelDuplicate}
         message="A similar usage entry was just recorded seconds ago. Did you intend to enter this again?"
+      />
+      <VoidDialog
+        open={!!voidDialogId}
+        onConfirm={handleVoidConfirm}
+        onCancel={() => setVoidDialogId(null)}
+        entryLabel="usage entry"
       />
       <div>
         <div className="text-xs font-semibold tracking-widest uppercase text-orange-700">Kitchen</div>

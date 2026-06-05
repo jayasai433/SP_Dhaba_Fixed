@@ -94,6 +94,19 @@ async def _seed_indexes():
         db.closing_stock.create_index([("item_id", 1), ("date", 1)], unique=True),
         db.closing_stock.create_index([("date", -1)]),
         db.closing_stock.create_index([("wastage_flag", 1), ("date", -1)]),
+        # Duplicate-check window: purchases.created_at, usage.created_at, expenses.created_at
+        db.purchases.create_index([("created_at", -1)]),
+        db.daily_usage.create_index([("created_at", -1)]),
+        db.expenses.create_index([("created_at", -1)]),
+        # Sales date range queries
+        db.sales.create_index([("date", 1)]),
+        # Compound for P&L trend aggregation
+        db.purchases.create_index([("is_void", 1), ("date", 1), ("total_cost", 1)]),
+        db.expenses.create_index([("is_void", 1), ("date", 1), ("amount", 1)]),
+        db.salaries.create_index([("paid_date", 1), ("net_payable", 1)]),
+        # Rate limiter — TTL index auto-expires documents after window
+        db.login_attempts.create_index([("expire_at", 1)], expireAfterSeconds=0),
+        db.login_attempts.create_index([("key", 1), ("ts", -1)]),
         # Notifications
         db.notifications.create_index([("created_at", -1)]),
         db.notifications.create_index("status"),

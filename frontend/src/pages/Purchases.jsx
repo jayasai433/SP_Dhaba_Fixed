@@ -14,6 +14,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useSave } from "@/hooks/useSave";
 import { useDateFilter } from "@/hooks/useDateFilter";
 import DuplicateWarningDialog from "@/components/DuplicateWarningDialog";
+import VoidDialog from "@/components/VoidDialog";
 
 export default function Purchases() {
   const [params] = useSearchParams();
@@ -24,6 +25,7 @@ export default function Purchases() {
   const [filterItem, setFilterItem] = useState("all");
   const { start, end, setStart, setEnd, dateParams } = useDateFilter();
   const [voidingId, setVoidingId] = useState(null);
+  const [voidDialogId, setVoidDialogId] = useState(null);
 
   const [itemId, setItemId] = useState(params.get("item") || "");
   const [date, setDate] = useState(todayIST());
@@ -56,11 +58,13 @@ export default function Purchases() {
     save();
   };
 
-  const voidRow = async (id) => {
-    const reason = window.prompt("Reason for voiding this entry (required):");
-    if (!reason?.trim()) return;
+  const voidRow = (id) => setVoidDialogId(id);
+
+  const handleVoidConfirm = async (reason) => {
+    const id = voidDialogId;
+    setVoidDialogId(null);
     try {
-      await api.patch(`/purchases/${id}/void`, { reason: reason.trim() });
+      await api.patch(`/purchases/${id}/void`, { reason });
       toast.success("Entry voided");
       load();
     } catch (err) { toast.error(formatApiError(err)); }
@@ -75,6 +79,12 @@ export default function Purchases() {
         onConfirm={confirmDuplicate}
         onCancel={cancelDuplicate}
         message="A purchase for the same item and quantity was just recorded seconds ago. Did you intend to enter this again?"
+      />
+      <VoidDialog
+        open={!!voidDialogId}
+        onConfirm={handleVoidConfirm}
+        onCancel={() => setVoidDialogId(null)}
+        entryLabel="purchase"
       />
       <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
         <div>

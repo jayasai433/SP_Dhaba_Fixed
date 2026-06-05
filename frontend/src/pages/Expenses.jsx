@@ -13,6 +13,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useSave } from "@/hooks/useSave";
 import { useDateFilter } from "@/hooks/useDateFilter";
 import DuplicateWarningDialog from "@/components/DuplicateWarningDialog";
+import VoidDialog from "@/components/VoidDialog";
 
 export default function Expenses() {
   const { user } = useAuth();
@@ -25,6 +26,7 @@ export default function Expenses() {
   const [amt, setAmt] = useState("");
   const [filterCat, setFilterCat] = useState("all");
   const { start, end, setStart, setEnd, dateParams } = useDateFilter();
+  const [voidDialogId, setVoidDialogId] = useState(null);
 
   useEffect(() => { api.get("/expense-categories").then(({ data }) => setCats(data)).catch((err) => console.error(err)); }, []);
   const load = useCallback(() => {
@@ -45,11 +47,13 @@ export default function Expenses() {
     save();
   };
 
-  const voidRow = async (id) => {
-    const reason = window.prompt("Reason for voiding this entry (required):");
-    if (!reason?.trim()) return;
+  const voidRow = (id) => setVoidDialogId(id);
+
+  const handleVoidConfirm = async (reason) => {
+    const id = voidDialogId;
+    setVoidDialogId(null);
     try {
-      await api.patch(`/expenses/${id}/void`, { reason: reason.trim() });
+      await api.patch(`/expenses/${id}/void`, { reason });
       toast.success("Entry voided");
       load();
     } catch (err) { toast.error(formatApiError(err)); }
@@ -76,6 +80,12 @@ export default function Expenses() {
         onConfirm={confirmDuplicate}
         onCancel={cancelDuplicate}
         message="An expense with the same category and amount was just recorded seconds ago. Did you intend to enter this again?"
+      />
+      <VoidDialog
+        open={!!voidDialogId}
+        onConfirm={handleVoidConfirm}
+        onCancel={() => setVoidDialogId(null)}
+        entryLabel="expense"
       />
       <div>
         <div className="text-xs font-semibold tracking-widest uppercase text-orange-700">Operating Expenses</div>

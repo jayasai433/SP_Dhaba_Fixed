@@ -70,25 +70,61 @@ async def compute_pnl(start: Optional[str], end: Optional[str]) -> dict:
             "margin_pct": round((net / rev * 100) if rev else 0, 1)}
 
 async def compute_pnl_trend(days: int) -> list:
+    """
+    Build a daily P&L trend using MongoDB $group aggregations — O(1) data transfer
+    regardless of document count. Previously fetched up to 14,000 docs into memory
+    and looped in Python; now each collection does one aggregation in the DB.
+    """
+    import asyncio
+
     end_dt   = datetime.now(IST).date()
     start_dt = end_dt - timedelta(days=days - 1)
+    start_s  = start_dt.isoformat()
+    end_s    = end_dt.isoformat()
 
-    purchases     = await db.purchases.find({"is_void": {"$ne": True}}, {"_id": 0}).to_list(5000)
-    sales         = await db.sales.find({}, {"_id": 0}).to_list(5000)
-    expenses_docs = await db.expenses.find({"is_void": {"$ne": True}}, {"_id": 0}).to_list(5000)
-    salaries      = await db.salaries.find({}, {"_id": 0}).to_list(2000)
+    # Run all four aggregations concurrently
+    sales_agg, pur_agg, exp_agg, sal_agg = await asyncio.gather(
+        db.sales.aggregate([
+            {"$match": {"date": {"$gte": start_s, "$lte": end_s}}},
+            {"$group": {"_id": "$date", "revenue": {"$sum": "$total_amount"}}},
+        ]).to_list(days + 5),
+
+        db.purchases.aggregate([
+            {"$match": {"is_void": {"$ne": True}, "date": {"$gte": start_s, "$lte": end_s}}},
+            {"$group": {"_id": "$date", "cogs": {"$sum": "$total_cost"}}},
+        ]).to_list(days + 5),
+
+        db.expenses.aggregate([
+            {"$match": {"is_void": {"$ne": True}, "date": {"$gte": start_s, "$lte": end_s}}},
+            {"$group": {"_id": "$date", "expenses": {"$sum": "$amount"}}},
+        ]).to_list(days + 5),
+
+        db.salaries.aggregate([
+            {"$match": {"paid_date": {"$gte": start_s, "$lte": end_s, "$exists": True, "$ne": None}}},
+            {"$group": {"_id": "$paid_date", "salaries": {"$sum": "$net_payable"}}},
+        ]).to_list(days + 5),
+    )
+
+    # Index results by date for O(1) lookup — no Python-level looping over raw docs
+    rev_map = {r["_id"]: r["revenue"]  for r in sales_agg}
+    cog_map = {r["_id"]: r["cogs"]     for r in pur_agg}
+    exp_map = {r["_id"]: r["expenses"] for r in exp_agg}
+    sal_map = {r["_id"]: r["salaries"] for r in sal_agg}
 
     trend = []
     for i in range(days):
-        d    = (start_dt + timedelta(days=i)).isoformat()
-        rev  = sum(s["total_amount"]           for s in sales         if s["date"] == d)
-        cogs = sum(p["total_cost"]             for p in purchases      if p["date"] == d)
-        exp  = sum(e["amount"]                 for e in expenses_docs  if e["date"] == d)
-        sal  = sum(s.get("net_payable", 0)     for s in salaries       if s.get("paid_date") == d)
+        d   = (start_dt + timedelta(days=i)).isoformat()
+        rev = rev_map.get(d, 0)
+        cog = cog_map.get(d, 0)
+        exp = exp_map.get(d, 0)
+        sal = sal_map.get(d, 0)
         trend.append({
-            "date": d, "net": round(rev - cogs - exp - sal, 2),
-            "revenue": round(rev, 2), "cogs": round(cogs, 2),
-            "expenses": round(exp, 2), "salaries": round(sal, 2),
+            "date":     d,
+            "revenue":  round(rev, 2),
+            "cogs":     round(cog, 2),
+            "expenses": round(exp, 2),
+            "salaries": round(sal, 2),
+            "net":      round(rev - cog - exp - sal, 2),
         })
     return trend
 

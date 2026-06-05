@@ -41,6 +41,11 @@ class ItemStats:
     # ── Statistical properties ─────────────────────────────────────────
 
     @property
+    def data_points(self) -> int:
+        """Number of non-zero consumption data points available."""
+        return len(self._consumptions)
+
+    @property
     def avg_daily_usage(self) -> float:
         if not self._consumptions:
             return 0.0
