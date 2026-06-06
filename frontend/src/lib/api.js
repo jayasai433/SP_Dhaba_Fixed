@@ -19,6 +19,16 @@ export function clearToken() {
 
 const api = axios.create({ baseURL: API, timeout: 15000 }); // 15s timeout
 
+// ── UAT secret header — staging only ──────────────────────────────────────
+// When UAT agent sets sp_uat_secret in localStorage, attach it to every
+// request so the backend rate limiter can bypass for automated testing.
+// This key is never set in normal usage — only by the UAT agent.
+api.interceptors.request.use((config) => {
+  const uatSecret = localStorage.getItem("sp_uat_secret");
+  if (uatSecret) config.headers["X-UAT-Secret"] = uatSecret;
+  return config;
+});
+
 // Attach token to every request
 api.interceptors.request.use((config) => {
   const token = getToken();

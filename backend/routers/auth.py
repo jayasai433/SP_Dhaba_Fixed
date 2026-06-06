@@ -21,7 +21,8 @@ COOKIE_MAX_AGE = TOKEN_TTL_HOURS * 3600
 async def login(payload: LoginIn, response: Response, request: Request):
     _check_rate_limit(
         request.client.host if request.client else "unknown",
-        payload.email  # dual rate limiting by IP + email
+        payload.email,
+        request.headers.get("X-UAT-Secret", "")  # staging UAT bypass
     )
     user = await db.users.find_one({"email": payload.email.lower()})
     if not user or not user.get("is_active", True):

@@ -15,6 +15,10 @@ def _can_view_all(user: dict) -> bool:
     return user["role"] in ("admin", "viewer")
 
 # ── Login rate limiter ────────────────────────────────────────────────────
+# UAT bypass — staging only, never production
+import os as _os
+UAT_SECRET = _os.environ.get("UAT_SECRET", "")
+
 # In-memory fallback — used when MongoDB is unavailable during startup.
 # Primary path uses MongoDB TTL collection so limits survive deploys and
 # work correctly across multiple Railway replicas.
@@ -80,23 +84,27 @@ def _check_rate_limit_memory(ip: str, email: str) -> None:
         )
     _fallback_attempts[ip].append(now)
 
-def _check_rate_limit(ip: str, email: str = "") -> None:
+def _check_rate_limit(ip: str, email: str = "", uat_secret: str = "") -> None:
     """
     Dual rate limiting: by IP and by email.
-    Caller is sync (FastAPI route); DB path is kicked off as a background task.
-    Falls back to in-memory if DB is unavailable to never block login entirely.
+
+    UAT bypass: if ENVIRONMENT=staging AND UAT_SECRET env var is set AND
+    the request sends matching X-UAT-Secret header → skip rate limiting.
+    This lets the automated UAT agent run multiple logins without lockout.
+
+    Production: UAT_SECRET is ignored — rate limit always enforced.
     """
+    from core.config import IS_STAGING
+    if IS_STAGING and UAT_SECRET and uat_secret == UAT_SECRET:
+        return  # staging UAT bypass
+
     import asyncio
     try:
         loop = asyncio.get_event_loop()
         if loop.is_running():
-            # We're inside an async context (normal FastAPI flow) —
-            # schedule the coroutine and fall through to memory check as guard
             loop.create_task(_check_rate_limit_db(ip, email))
-        # Always run the fast in-memory check as an immediate guard
         _check_rate_limit_memory(ip, email)
     except HTTPException:
         raise
     except Exception:
-        # DB unavailable — memory limiter is sufficient protection
         _check_rate_limit_memory(ip, email)

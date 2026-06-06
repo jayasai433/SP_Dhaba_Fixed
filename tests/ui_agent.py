@@ -131,17 +131,53 @@ def go(page, path):
                 return False
             page.wait_for_timeout(2000)
 
-def login_as(page, email, password):
-    """Login and wait for redirect away from /login."""
+def login_as(page, email, password, role=None):
+    """
+    Login and wait for redirect away from /login.
+    Sends X-UAT-Secret header via localStorage trick so the backend
+    rate limiter bypasses this request in staging.
+
+    Session reuse: if we have already logged in as this role in this
+    run, restore the browser storage state instead of logging in again.
+    This prevents triggering the rate limiter (5 attempts / 5 min).
+    """
+    # Restore existing session if available
+    if role and role in SESSIONS:
+        try:
+            page.goto(f"{BASE_URL}/login", wait_until="domcontentloaded", timeout=TIMEOUT)
+            # Inject stored token into localStorage
+            token = SESSIONS[role]
+            page.evaluate(f'localStorage.setItem("sp_token", "{token}")')
+            page.goto(f"{BASE_URL}/stock", wait_until="domcontentloaded", timeout=TIMEOUT)
+            page.wait_for_timeout(1200)
+            if "/login" not in page.url:
+                return True
+        except Exception:
+            pass  # fall through to fresh login
+
     for attempt in range(3):
         try:
             page.goto(f"{BASE_URL}/login", wait_until="domcontentloaded", timeout=TIMEOUT)
             page.wait_for_selector('[data-testid="login-email-input"]', timeout=TIMEOUT)
+
+            # Inject UAT secret into localStorage so api.js can send it as header
+            if UAT_SECRET:
+                page.evaluate(f'localStorage.setItem("sp_uat_secret", "{UAT_SECRET}")')
+
             page.fill('[data-testid="login-email-input"]', email)
             page.fill('[data-testid="login-password-input"]', password)
             page.click('[data-testid="login-submit-button"]')
             page.wait_for_url(lambda u: "/login" not in u, timeout=TIMEOUT)
             page.wait_for_timeout(800)
+
+            # Store token for reuse
+            if role:
+                try:
+                    token = page.evaluate('localStorage.getItem("sp_token")')
+                    if token:
+                        SESSIONS[role] = token
+                except Exception:
+                    pass
             return True
         except Exception:
             if attempt == 2:
@@ -232,7 +268,7 @@ def scenario_staff_purchases(browser):
 
     # Login as staff
     s = time.time()
-    ok = login_as(page, STAFF_EMAIL, STAFF_PASSWORD)
+    ok = login_as(page, STAFF_EMAIL, STAFF_PASSWORD, "staff")
     step(page, "Lokesh logs in as Staff", ok, page.url.split("/")[-1], "s1_01_login", s)
     if not ok:
         ctx.close()
@@ -328,7 +364,7 @@ def scenario_staff_closing_stock(browser):
     scenario("📦 Scenario 2 — Lokesh Records Closing Stock (Evening Count)")
     ctx, page = new_page(browser)
 
-    login_as(page, STAFF_EMAIL, STAFF_PASSWORD)
+    login_as(page, STAFF_EMAIL, STAFF_PASSWORD, "staff")
     go(page, "/closing-stock")
 
     # Check progress bar shows items to count
@@ -393,7 +429,7 @@ def scenario_staff_sales(browser):
     scenario("💰 Scenario 3 — Lokesh Records Day's Sales")
     ctx, page = new_page(browser)
 
-    login_as(page, STAFF_EMAIL, STAFF_PASSWORD)
+    login_as(page, STAFF_EMAIL, STAFF_PASSWORD, "staff")
     go(page, "/sales")
 
     # Fill sales form
@@ -473,7 +509,7 @@ def scenario_admin_review(browser):
     ctx, page = new_page(browser)
 
     s = time.time()
-    ok = login_as(page, ADMIN_EMAIL, ADMIN_PASSWORD)
+    ok = login_as(page, ADMIN_EMAIL, ADMIN_PASSWORD, "admin")
     step(page, "Admin logs in", ok, page.url.split("/")[-1], "s4_01_admin_login", s)
     if not ok:
         ctx.close()
@@ -552,7 +588,7 @@ def scenario_void_flow(browser):
     scenario("🚫 Scenario 5 — Void Flow (Admin)")
     ctx, page = new_page(browser)
 
-    login_as(page, ADMIN_EMAIL, ADMIN_PASSWORD)
+    login_as(page, ADMIN_EMAIL, ADMIN_PASSWORD, "admin")
     go(page, "/purchases")
     page.wait_for_timeout(500)
 
@@ -637,7 +673,7 @@ def scenario_security(browser):
 
     # ── Staff blocked pages ──
     ctx, page = new_page(browser)
-    login_as(page, STAFF_EMAIL, STAFF_PASSWORD)
+    login_as(page, STAFF_EMAIL, STAFF_PASSWORD, "staff")
     staff_blocked = [
         ("/dashboard",          "Dashboard"),
         ("/salaries",           "Salaries"),
@@ -662,7 +698,7 @@ def scenario_security(browser):
 
     # ── Viewer blocked pages ──
     ctx, page = new_page(browser)
-    login_as(page, VIEWER_EMAIL, VIEWER_PASSWORD)
+    login_as(page, VIEWER_EMAIL, VIEWER_PASSWORD, "viewer")
     viewer_blocked = [
         ("/purchases",  "Purchases"),
         ("/sales",      "Sales"),
@@ -703,7 +739,7 @@ def scenario_security(browser):
 def scenario_settings(browser):
     scenario("⚙️ Scenario 7 — Admin Settings Configuration")
     ctx, page = new_page(browser)
-    login_as(page, ADMIN_EMAIL, ADMIN_PASSWORD)
+    login_as(page, ADMIN_EMAIL, ADMIN_PASSWORD, "admin")
     go(page, "/settings")
 
     # Add a category and verify
@@ -788,7 +824,7 @@ def scenario_mobile(browser):
 
     # Login on mobile
     s = time.time()
-    ok = login_as(page, STAFF_EMAIL, STAFF_PASSWORD)
+    ok = login_as(page, STAFF_EMAIL, STAFF_PASSWORD, "staff")
     step(page, "Lokesh logs in on mobile", ok, "", "s8_01_mobile_login", s)
 
     if not ok:
