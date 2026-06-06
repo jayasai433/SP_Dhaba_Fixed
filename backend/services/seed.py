@@ -68,49 +68,84 @@ async def ensure_user(email, password, name, role):
         "created_at": iso(now_utc()),
     })
 
+async def _safe_create_index(collection, keys, **kwargs):
+    """
+    Create an index safely — drops conflicting index by name first.
+    Prevents IndexKeySpecsConflict on re-deploy to existing DBs
+    (e.g. staging DB that already has non-unique date_1 on sales).
+    """
+    name = kwargs.get("name")
+    if not name:
+        # Auto-generate name the same way MongoDB does
+        if isinstance(keys, str):
+            name = f"{keys}_1"
+        else:
+            name = "_".join(f"{k}_{v}" for k, v in keys)
+        kwargs["name"] = name
+    try:
+        await collection.create_index(keys, **kwargs)
+    except Exception as e:
+        if "IndexKeySpecsConflict" in str(e) or "existing index" in str(e):
+            # Drop the conflicting index and recreate
+            try:
+                await collection.drop_index(name)
+            except Exception:
+                pass
+            await collection.create_index(keys, **kwargs)
+        else:
+            raise
+
+
 async def _seed_indexes():
-    import asyncio
-    # Run all index creation in parallel for faster startup
-    await asyncio.gather(
-        db.users.create_index("email", unique=True),
-        db.items.create_index([("name", 1)], unique=True),
-        # Purchases: fast lookup by date (P&L, dashboard) and item (stock calc)
-        db.purchases.create_index([("date", 1)]),
-        db.purchases.create_index([("item_id", 1)]),
-        db.purchases.create_index([("is_void", 1), ("date", 1)]),
-        # Usage: same pattern as purchases
-        db.daily_usage.create_index([("date", 1)]),
-        db.daily_usage.create_index([("item_id", 1)]),
-        db.daily_usage.create_index([("is_void", 1), ("date", 1)]),
-        # Sales: unique per day + fast date lookup
-        db.sales.create_index("date", unique=True),
-        # Expenses: fast lookup by date and void status
-        db.expenses.create_index([("is_void", 1), ("date", 1)]),
-        db.expenses.create_index([("date", 1)]),
-        # Salaries: fast lookup by paid_date for P&L
-        db.salaries.create_index([("paid_date", 1)]),
-        db.salaries.create_index([("staff_id", 1), ("month", 1)], unique=True),
-        # Closing stock: one entry per item per date + wastage queries
-        db.closing_stock.create_index([("item_id", 1), ("date", 1)], unique=True),
-        db.closing_stock.create_index([("date", -1)]),
-        db.closing_stock.create_index([("wastage_flag", 1), ("date", -1)]),
-        # Duplicate-check window: purchases.created_at, usage.created_at, expenses.created_at
-        db.purchases.create_index([("created_at", -1)]),
-        db.daily_usage.create_index([("created_at", -1)]),
-        db.expenses.create_index([("created_at", -1)]),
-        # Sales date range queries
-        db.sales.create_index([("date", 1)]),
-        # Compound for P&L trend aggregation
-        db.purchases.create_index([("is_void", 1), ("date", 1), ("total_cost", 1)]),
-        db.expenses.create_index([("is_void", 1), ("date", 1), ("amount", 1)]),
-        db.salaries.create_index([("paid_date", 1), ("net_payable", 1)]),
-        # Rate limiter — TTL index auto-expires documents after window
-        db.login_attempts.create_index([("expire_at", 1)], expireAfterSeconds=0),
-        db.login_attempts.create_index([("key", 1), ("ts", -1)]),
-        # Notifications
-        db.notifications.create_index([("created_at", -1)]),
-        db.notifications.create_index("status"),
-    )
+    """
+    Create all indexes idempotently — safe to run on every startup.
+    Uses _safe_create_index to handle conflicts when re-deploying
+    to an existing DB (staging or production after schema changes).
+    Indexes are created sequentially to avoid overwhelming Atlas free tier.
+    """
+    # Users & Items
+    await _safe_create_index(db.users, "email", unique=True, name="users_email_unique")
+    await _safe_create_index(db.items, [("name", 1)], unique=True, name="items_name_unique")
+
+    # Purchases
+    await _safe_create_index(db.purchases, [("date", 1)], name="purchases_date")
+    await _safe_create_index(db.purchases, [("item_id", 1)], name="purchases_item_id")
+    await _safe_create_index(db.purchases, [("is_void", 1), ("date", 1)], name="purchases_void_date")
+    await _safe_create_index(db.purchases, [("created_at", -1)], name="purchases_created_at")
+    await _safe_create_index(db.purchases, [("is_void", 1), ("date", 1), ("total_cost", 1)], name="purchases_pnl_compound")
+
+    # Daily usage (legacy — kept for backward compat)
+    await _safe_create_index(db.daily_usage, [("date", 1)], name="usage_date")
+    await _safe_create_index(db.daily_usage, [("item_id", 1)], name="usage_item_id")
+    await _safe_create_index(db.daily_usage, [("is_void", 1), ("date", 1)], name="usage_void_date")
+    await _safe_create_index(db.daily_usage, [("created_at", -1)], name="usage_created_at")
+
+    # Sales — one entry per day (unique) + date range queries
+    await _safe_create_index(db.sales, [("date", 1)], unique=True, name="sales_date_unique")
+
+    # Expenses
+    await _safe_create_index(db.expenses, [("date", 1)], name="expenses_date")
+    await _safe_create_index(db.expenses, [("is_void", 1), ("date", 1)], name="expenses_void_date")
+    await _safe_create_index(db.expenses, [("created_at", -1)], name="expenses_created_at")
+    await _safe_create_index(db.expenses, [("is_void", 1), ("date", 1), ("amount", 1)], name="expenses_pnl_compound")
+
+    # Salaries
+    await _safe_create_index(db.salaries, [("paid_date", 1)], name="salaries_paid_date")
+    await _safe_create_index(db.salaries, [("staff_id", 1), ("month", 1)], unique=True, name="salaries_staff_month_unique")
+    await _safe_create_index(db.salaries, [("paid_date", 1), ("net_payable", 1)], name="salaries_pnl_compound")
+
+    # Closing stock
+    await _safe_create_index(db.closing_stock, [("item_id", 1), ("date", 1)], unique=True, name="closing_stock_item_date_unique")
+    await _safe_create_index(db.closing_stock, [("date", -1)], name="closing_stock_date")
+    await _safe_create_index(db.closing_stock, [("wastage_flag", 1), ("date", -1)], name="closing_stock_wastage")
+
+    # Rate limiter TTL
+    await _safe_create_index(db.login_attempts, [("expire_at", 1)], expireAfterSeconds=0, name="login_attempts_ttl")
+    await _safe_create_index(db.login_attempts, [("key", 1), ("ts", -1)], name="login_attempts_key_ts")
+
+    # Notifications
+    await _safe_create_index(db.notifications, [("created_at", -1)], name="notifications_created_at")
+    await _safe_create_index(db.notifications, "status", name="notifications_status")
 
 async def _seed_users():
     # Remove old email addresses from previous version
