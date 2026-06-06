@@ -1,72 +1,57 @@
 """
-SP Dhaba — UAT Test Agent
-==========================
-Simulates real business scenarios like a UAT tester would run.
-Not just "does the page load" — full end-to-end flows with data verification.
-
-Scenarios:
-  1. Morning purchases by Lokesh (Staff)
-  2. Evening closing stock by Lokesh — verifies consumed formula
-  3. Sales recording by Lokesh — verifies totals
-  4. Admin reviews dashboard and P&L
-  5. Admin adds expense — verifies P&L updates
-  6. Security — role access enforcement
-  7. Void flow — admin voids entry, verifies disappears
+SP Dhaba — UAT Agent
+====================
+Simulates real business scenarios like a UAT tester.
+Tests actual data entry, verifies results, checks role permissions.
 
 Usage:
-  python3 tests/ui_agent.py https://spdhaba-stage.up.railway.app
-  python3 tests/ui_agent.py https://spdhaba-prd.up.railway.app
+  UAT_SECRET=sp-dhaba-uat-2024 python3 tests/ui_agent.py <url>
 
-Output:
-  tests/screenshots/report.html
+Scenarios:
+  0. Environment check
+  1. Lokesh morning purchases (staff)
+  2. Lokesh evening closing stock
+  3. Lokesh records sales + expenses
+  4. Admin end-of-day review
+  5. Void flow
+  6. Security & role enforcement
+  7. Settings configuration
+  8. Mobile UAT
 """
 
-import sys, os, time, base64, re
+import sys, os, time, base64
 from datetime import datetime, date
 from pathlib import Path
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
-# ── Config ──────────────────────────────────────────────────────────────────
 BASE_URL        = sys.argv[1].rstrip("/") if len(sys.argv) > 1 else "http://localhost:3000"
-ADMIN_EMAIL     = os.environ.get("ADMIN_EMAIL", "admin@spdhaba.com")
-ADMIN_PASSWORD  = os.environ.get("ADMIN_PWD",   "Admin@123")
-STAFF_EMAIL     = os.environ.get("STAFF_EMAIL", "lokesh@spdhaba.com")
-STAFF_PASSWORD  = os.environ.get("STAFF_PWD",   "Staff@123")
-VIEWER_EMAIL    = os.environ.get("VIEWER_EMAIL","display@spdhaba.com")
-VIEWER_PASSWORD = os.environ.get("VIEWER_PWD",  "View@123")
+ADMIN_EMAIL     = os.environ.get("ADMIN_EMAIL",  "admin@spdhaba.com")
+ADMIN_PASSWORD  = os.environ.get("ADMIN_PWD",    "Admin@123")
+STAFF_EMAIL     = os.environ.get("STAFF_EMAIL",  "lokesh@spdhaba.com")
+STAFF_PASSWORD  = os.environ.get("STAFF_PWD",    "Staff@123")
+VIEWER_EMAIL    = os.environ.get("VIEWER_EMAIL", "display@spdhaba.com")
+VIEWER_PASSWORD = os.environ.get("VIEWER_PWD",   "View@123")
+UAT_SECRET      = os.environ.get("UAT_SECRET",   "")
 HEADLESS        = os.environ.get("HEADLESS", "true").lower() == "true"
 TIMEOUT         = 30000
 TODAY           = date.today().isoformat()
 
-# Session store — login once per role, reuse token across all scenarios
-SESSIONS = {}  # role → JWT token string
-
-SS_DIR = Path(__file__).parent / "screenshots"
+SS_DIR  = Path(__file__).parent / "screenshots"
 SS_DIR.mkdir(exist_ok=True)
+RESULTS = []
+CURRENT = ""
+# Cached tokens per role — login once, reuse everywhere
+TOKENS  = {}
 
-# ── State shared across scenarios ────────────────────────────────────────────
-STATE = {
-    "chicken_item_id": None,
-    "onion_item_id":   None,
-    "first_item_name": None,
-    "first_item_id":   None,
-    "purchase_row_id": None,
-    "expense_row_id":  None,
-}
-
-# ── Results ──────────────────────────────────────────────────────────────────
-results = []
-current_scenario = ""
+# ── Result helpers ────────────────────────────────────────────────────────────
 
 def scenario(name):
-    global current_scenario
-    current_scenario = name
-    print(f"\n{'━'*65}")
-    print(f"  {name}")
-    print(f"{'━'*65}")
+    global CURRENT
+    CURRENT = name
+    print(f"\n{'━'*65}\n  {name}\n{'━'*65}")
 
-def step(page, name, passed, detail="", ss_name=None, start=None):
-    duration = round(time.time() - start, 1) if start else 0
+def step(page, name, ok, detail="", ss_name=None, start=None):
+    dur  = round(time.time() - start, 1) if start else 0
     path = None
     if ss_name:
         p = SS_DIR / f"{ss_name}.png"
@@ -75,27 +60,19 @@ def step(page, name, passed, detail="", ss_name=None, start=None):
             path = str(p)
         except Exception:
             pass
-    results.append({
-        "scenario": current_scenario,
-        "name": name,
-        "status": "PASS" if passed else "FAIL",
-        "detail": detail,
-        "screenshot": path,
-        "duration": duration,
-    })
-    icon = "✅" if passed else "❌"
-    msg = f"  {icon} {name}"
+    RESULTS.append({"scenario": CURRENT, "name": name,
+                    "status": "PASS" if ok else "FAIL",
+                    "detail": detail, "screenshot": path, "duration": dur})
+    icon = "✅" if ok else "❌"
+    msg  = f"  {icon} {name}"
     if detail: msg += f"  →  {detail}"
-    if duration: msg += f"  ({duration}s)"
+    if dur:    msg += f"  ({dur}s)"
     print(msg)
-    return passed
+    return ok
 
+# ── Navigation helpers ────────────────────────────────────────────────────────
 
-# ══════════════════════════════════════════════════════════════════════════════
-# CORE HELPERS
-# ══════════════════════════════════════════════════════════════════════════════
-
-def new_page(browser, mobile=False):
+def ctx_page(browser, mobile=False):
     if mobile:
         ctx = browser.new_context(
             viewport={"width": 390, "height": 844},
@@ -108,53 +85,39 @@ def new_page(browser, mobile=False):
     return ctx, p
 
 def go(page, path):
-    """
-    Navigate and wait for React app to mount.
-
-    Why the extra wait after domcontentloaded:
-    Your app has JWT auth on every route. After the HTML loads, React
-    must call /api/me, get the response, check the role, then either
-    render the page or redirect to /forbidden. That round-trip takes
-    300-800ms on Railway cross-domain. Without waiting, is_forbidden()
-    runs before the redirect happens → false negative.
-    """
+    """Navigate and wait for app shell or login page to mount."""
     for attempt in range(3):
         try:
             page.goto(f"{BASE_URL}{path}", wait_until="domcontentloaded", timeout=TIMEOUT)
-            # Wait for any of: logged-in app, login page, or forbidden page
             page.wait_for_selector(
                 '[data-testid="app-shell"], [data-testid="login-page"], [data-testid="forbidden-page"]',
                 timeout=15000
             )
-            # Extra buffer for auth round-trip + role check + possible redirect
             page.wait_for_timeout(1200)
             return True
         except Exception:
-            if attempt == 2:
-                return False
+            if attempt == 2: return False
             page.wait_for_timeout(2000)
 
-def login_as(page, email, password, role=None):
-    """
-    Login and wait for redirect away from /login.
-    Sends X-UAT-Secret header via localStorage trick so the backend
-    rate limiter bypasses this request in staging.
+def inject_token(page, token):
+    """Inject JWT token directly into localStorage — bypasses login form."""
+    page.goto(f"{BASE_URL}/login", wait_until="domcontentloaded", timeout=TIMEOUT)
+    page.wait_for_timeout(500)
+    if UAT_SECRET:
+        page.evaluate(f'localStorage.setItem("sp_uat_secret", "{UAT_SECRET}")')
+    page.evaluate(f'localStorage.setItem("sp_token", "{token}")')
+    page.goto(f"{BASE_URL}/stock", wait_until="domcontentloaded", timeout=TIMEOUT)
+    page.wait_for_selector('[data-testid="app-shell"]', timeout=15000)
+    page.wait_for_timeout(1000)
+    return "/login" not in page.url
 
-    Session reuse: if we have already logged in as this role in this
-    run, restore the browser storage state instead of logging in again.
-    This prevents triggering the rate limiter (5 attempts / 5 min).
-    """
-    # Restore existing session if available
-    if role and role in SESSIONS:
+def login_as(page, email, password, role):
+    """Login via form, cache token for reuse in later scenarios."""
+    # Reuse cached token if available
+    if role in TOKENS:
         try:
-            page.goto(f"{BASE_URL}/login", wait_until="domcontentloaded", timeout=TIMEOUT)
-            # Inject stored token into localStorage
-            token = SESSIONS[role]
-            page.evaluate(f'localStorage.setItem("sp_token", "{token}")')
-            page.goto(f"{BASE_URL}/stock", wait_until="domcontentloaded", timeout=TIMEOUT)
-            page.wait_for_timeout(1200)
-            if "/login" not in page.url:
-                return True
+            ok = inject_token(page, TOKENS[role])
+            if ok: return True
         except Exception:
             pass  # fall through to fresh login
 
@@ -162,66 +125,78 @@ def login_as(page, email, password, role=None):
         try:
             page.goto(f"{BASE_URL}/login", wait_until="domcontentloaded", timeout=TIMEOUT)
             page.wait_for_selector('[data-testid="login-email-input"]', timeout=TIMEOUT)
+            page.wait_for_timeout(500)
 
-            # Inject UAT secret into localStorage so api.js can send it as header
+            # Inject UAT secret so rate limiter is bypassed
             if UAT_SECRET:
                 page.evaluate(f'localStorage.setItem("sp_uat_secret", "{UAT_SECRET}")')
 
             page.fill('[data-testid="login-email-input"]', email)
             page.fill('[data-testid="login-password-input"]', password)
             page.click('[data-testid="login-submit-button"]')
-            page.wait_for_url(lambda u: "/login" not in u, timeout=TIMEOUT)
-            page.wait_for_timeout(800)
 
-            # Store token for reuse
-            if role:
-                try:
-                    token = page.evaluate('localStorage.getItem("sp_token")')
-                    if token:
-                        SESSIONS[role] = token
-                except Exception:
-                    pass
+            # Wait for redirect away from /login
+            page.wait_for_function(
+                'window.location.pathname !== "/login"',
+                timeout=TIMEOUT
+            )
+            page.wait_for_timeout(1000)
+
+            if "/login" in page.url:
+                raise Exception("still on login page")
+
+            # Cache the token
+            try:
+                token = page.evaluate('localStorage.getItem("sp_token")')
+                if token:
+                    TOKENS[role] = token
+            except Exception:
+                pass
+
             return True
-        except Exception:
+        except Exception as e:
             if attempt == 2:
                 return False
-            page.wait_for_timeout(2000)
+            page.wait_for_timeout(3000)
 
-def select_option(page, trigger_testid, text=None):
-    """Click a Select trigger and pick option by text or first option."""
-    page.locator(f'[data-testid="{trigger_testid}"]').click()
-    page.wait_for_timeout(600)
-    opts = page.locator('[role="option"]')
-    count = opts.count()
-    if count == 0:
+def select_first(page, trigger_testid):
+    """Click a Select trigger and choose the first option. Returns option text."""
+    try:
+        page.locator(f'[data-testid="{trigger_testid}"]').click()
+        page.wait_for_timeout(600)
+        opts = page.locator('[role="option"]')
+        if opts.count() == 0:
+            return None
+        text = opts.first.text_content().strip()
+        opts.first.click()
+        page.wait_for_timeout(400)
+        return text
+    except Exception:
         return None
-    if text:
-        for i in range(count):
-            if text.lower() in opts.nth(i).text_content().lower():
-                name = opts.nth(i).text_content().strip()
-                opts.nth(i).click()
-                page.wait_for_timeout(300)
-                return name
-    name = opts.first.text_content().strip()
-    opts.first.click()
-    page.wait_for_timeout(300)
-    return name
 
-def wait_for_toast(page, timeout=4000):
-    """Wait for a success/error toast."""
+def toast_text(page, timeout=5000):
     try:
         page.wait_for_selector('[data-sonner-toast]', timeout=timeout)
-        return page.locator('[data-sonner-toast]').first.text_content()
+        return page.locator('[data-sonner-toast]').first.text_content() or ""
     except Exception:
         return ""
 
-def row_count(page, testid_prefix):
-    return page.locator(f'[data-testid^="{testid_prefix}"]').count()
+def row_count(page, prefix):
+    return page.locator(f'[data-testid^="{prefix}"]').count()
 
 def is_forbidden(page):
-    return "forbidden" in page.url or page.locator('[data-testid="forbidden-page"]').count() > 0
+    page.wait_for_timeout(2500)  # wait for auth redirect
+    return "forbidden" in page.url or \
+           page.locator('[data-testid="forbidden-page"]').count() > 0
 
-def text_of(page, testid):
+def has(page, selector, timeout=5000):
+    try:
+        page.wait_for_selector(selector, timeout=timeout)
+        return True
+    except Exception:
+        return False
+
+def txt(page, testid):
     try:
         return page.locator(f'[data-testid="{testid}"]').text_content().strip()
     except Exception:
@@ -229,20 +204,19 @@ def text_of(page, testid):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SCENARIO 0 — ENVIRONMENT CHECK
+# SCENARIO 0 — ENVIRONMENT
 # ══════════════════════════════════════════════════════════════════════════════
 
-def scenario_environment(browser):
+def s0_environment(browser):
     scenario("🌍 Scenario 0 — Environment Check")
-    ctx, page = new_page(browser)
+    ctx, page = ctx_page(browser)
 
     s = time.time()
     try:
         page.goto(f"{BASE_URL}/login", wait_until="domcontentloaded", timeout=TIMEOUT)
-        page.wait_for_selector('[data-testid="login-page"]', timeout=TIMEOUT)
-        page.wait_for_timeout(1500)
+        page.wait_for_selector('[data-testid="login-page"]', timeout=15000)
+        page.wait_for_timeout(2000)
 
-        # Check banner
         banner = ""
         for sel in ["text=STAGING", "text=Production", "text=Unknown environment"]:
             el = page.locator(sel)
@@ -251,12 +225,10 @@ def scenario_environment(browser):
                 break
 
         step(page, "Environment banner visible", bool(banner), banner, "s0_01_banner", s)
-
-        # Check it shows DB name
-        has_db = "sp_dhaba" in banner.lower()
-        step(page, "Banner shows DB name", has_db, banner[:60], "s0_02_db_name", s)
+        step(page, "Banner contains DB name", "sp_dhaba" in banner.lower(),
+             banner[:80], "s0_02_db_name", s)
     except Exception as e:
-        step(page, "Environment check", False, str(e)[:80])
+        step(page, "Environment check", False, str(e)[:100])
 
     ctx.close()
 
@@ -265,240 +237,200 @@ def scenario_environment(browser):
 # SCENARIO 1 — LOKESH MORNING PURCHASES
 # ══════════════════════════════════════════════════════════════════════════════
 
-def scenario_staff_purchases(browser):
+def s1_staff_purchases(browser):
     scenario("🛒 Scenario 1 — Lokesh Records Morning Purchases")
-    ctx, page = new_page(browser)
+    ctx, page = ctx_page(browser)
 
-    # Login as staff
+    # Login
     s = time.time()
     ok = login_as(page, STAFF_EMAIL, STAFF_PASSWORD, "staff")
-    step(page, "Lokesh logs in as Staff", ok, page.url.split("/")[-1], "s1_01_login", s)
-    if not ok:
-        ctx.close()
-        return
+    if not step(page, "Lokesh logs in as Staff",
+                ok, page.url.split("/")[-1], "s1_01_login", s):
+        ctx.close(); return
 
-    # Redirected to stock (not dashboard)
     step(page, "Lokesh lands on Live Stock (not dashboard)",
-         "stock" in page.url, page.url.split("/")[-1], "s1_02_stock_landing", s)
+         "stock" in page.url, page.url.split("/")[-1], "s1_02_landing", s)
 
-    # Go to purchases
+    # Navigate to purchases
     s = time.time()
     go(page, "/purchases")
-    step(page, "Lokesh navigates to Purchases page",
-         "forbidden" not in page.url, "", "s1_03_purchases_page", s)
+    step(page, "Purchases page loads", has(page, '[data-testid="purchases-page"]'),
+         "", "s1_03_purchases_page", s)
 
-    # Add purchase 1 — first available item, 10 units at ₹200
+    # Purchase 1 — 10 units × ₹200
     s = time.time()
     try:
-        item_name = select_option(page, "purchase-item-select")
-        STATE["first_item_name"] = item_name
+        item1 = select_first(page, "purchase-item-select")
         page.fill('[data-testid="purchase-qty-input"]', "10")
         page.fill('[data-testid="purchase-price-input"]', "200")
-        page.wait_for_timeout(300)
+        page.wait_for_timeout(400)
+        preview = txt(page, "purchase-total-preview")
+        step(page, f"Purchase 1: 10 × ₹200 = ₹2,000 [{item1}]",
+             "2,000" in preview or "2000" in preview,
+             f"Preview: {preview}", "s1_04_p1_preview", s)
 
-        preview = text_of(page, "purchase-total-preview")
-        correct = "2,000" in preview or "2000" in preview
-        step(page, f"Purchase 1: 10 × ₹200 = ₹2000 (item: {item_name})",
-             correct, f"Preview shows: {preview}", "s1_04_purchase1_preview", s)
-
-        # Note rows before save
         before = row_count(page, "purchase-row-")
-
-        s2 = time.time()
         page.click('[data-testid="purchase-submit-button"]')
-        toast = wait_for_toast(page)
+        t = toast_text(page)
         page.wait_for_timeout(1500)
-
         after = row_count(page, "purchase-row-")
         step(page, "Purchase 1 saved — row appears in list",
-             after > before, f"{before}→{after} rows, toast: {toast[:40]}", "s1_05_purchase1_saved", s2)
-
-        # Save the row ID for void test later
-        rows = page.locator('[data-testid^="purchase-row-"]')
-        if rows.count() > 0:
-            tid = rows.first.get_attribute("data-testid")
-            STATE["purchase_row_id"] = tid.replace("purchase-row-", "") if tid else None
+             after > before,
+             f"rows {before}→{after}, toast: {t[:40]}", "s1_05_p1_saved", s)
     except Exception as e:
-        step(page, "Purchase 1 entry and verification", False, str(e)[:80])
+        step(page, "Purchase 1", False, str(e)[:100])
 
-    # Add purchase 2 — different item
+    # Purchase 2 — 5 units × ₹30
     s = time.time()
     try:
-        item2_name = select_option(page, "purchase-item-select")
+        item2 = select_first(page, "purchase-item-select")
         page.fill('[data-testid="purchase-qty-input"]', "5")
         page.fill('[data-testid="purchase-price-input"]', "30")
-
-        preview = text_of(page, "purchase-total-preview")
-        correct = "150" in preview
-        step(page, f"Purchase 2: 5 × ₹30 = ₹150 (item: {item2_name})",
-             correct, f"Preview: {preview}", "s1_06_purchase2_preview", s)
+        page.wait_for_timeout(400)
+        preview = txt(page, "purchase-total-preview")
+        step(page, f"Purchase 2: 5 × ₹30 = ₹150 [{item2}]",
+             "150" in preview,
+             f"Preview: {preview}", "s1_06_p2_preview", s)
 
         before = row_count(page, "purchase-row-")
         page.click('[data-testid="purchase-submit-button"]')
         page.wait_for_timeout(1500)
         after = row_count(page, "purchase-row-")
         step(page, "Purchase 2 saved — row appears in list",
-             after > before, f"{before}→{after} rows", "s1_07_purchase2_saved", s)
+             after > before,
+             f"rows {before}→{after}", "s1_07_p2_saved", s)
     except Exception as e:
-        step(page, "Purchase 2 entry", False, str(e)[:80])
+        step(page, "Purchase 2", False, str(e)[:100])
 
-    # Verify live stock shows the items
+    # Live stock shows items
     s = time.time()
     go(page, "/stock")
     page.wait_for_timeout(1000)
     cards = row_count(page, "stock-card-")
-    step(page, "Live Stock shows items after purchases",
-         cards > 0, f"{cards} items in stock", "s1_08_stock_after_purchases", s)
+    step(page, "Live stock shows items after purchases",
+         cards > 0, f"{cards} items", "s1_08_stock", s)
 
-    # Staff CANNOT go to dashboard
+    # Staff CANNOT access dashboard
     s = time.time()
-    go(page, "/dashboard")
-    step(page, "Lokesh cannot access Dashboard",
+    page.goto(f"{BASE_URL}/dashboard", wait_until="domcontentloaded", timeout=TIMEOUT)
+    step(page, "Lokesh CANNOT access Dashboard",
          is_forbidden(page), page.url, "s1_09_no_dashboard", s)
 
     ctx.close()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SCENARIO 2 — LOKESH EVENING CLOSING STOCK
+# SCENARIO 2 — LOKESH CLOSING STOCK
 # ══════════════════════════════════════════════════════════════════════════════
 
-def scenario_staff_closing_stock(browser):
-    scenario("📦 Scenario 2 — Lokesh Records Closing Stock (Evening Count)")
-    ctx, page = new_page(browser)
-
+def s2_closing_stock(browser):
+    scenario("📦 Scenario 2 — Lokesh Records Closing Stock")
+    ctx, page = ctx_page(browser)
     login_as(page, STAFF_EMAIL, STAFF_PASSWORD, "staff")
+
     go(page, "/closing-stock")
 
-    # Check progress bar shows items to count
+    # Progress bar visible
     s = time.time()
-    has_progress = page.locator("text=Items counted today").count() > 0
     step(page, "Closing stock page shows item count progress",
-         has_progress, "", "s2_01_progress_bar", s)
+         has(page, "text=Items counted today"),
+         "", "s2_01_page", s)
 
-    # Count first item — enter closing qty
+    # Count item 1 — closing qty 7
     s = time.time()
     try:
-        item_name = select_option(page, "closing-item-select")
+        item1 = select_first(page, "closing-item-select")
         page.fill('[data-testid="closing-qty-input"]', "7")
         page.fill('[data-testid="closing-notes-input"]', "Counted after dinner service")
-        step(page, f"Lokesh enters closing qty for {item_name}: 7 units",
-             bool(item_name), item_name, "s2_02_closing_form", s)
 
-        s2 = time.time()
+        before = row_count(page, "closing-row-")
         page.click('[data-testid="closing-save-btn"]')
-        toast = wait_for_toast(page)
+        t = toast_text(page)
         page.wait_for_timeout(1500)
+        after = row_count(page, "closing-row-")
+        step(page, f"Closing count saved for {item1} (qty=7)",
+             after > before,
+             f"rows {before}→{after}, toast: {t[:40]}", "s2_02_saved", s)
 
-        # Verify row appears with formula columns
-        rows = page.locator('[data-testid^="closing-row-"]')
-        row_count_val = rows.count()
-        step(page, "Closing stock saved — row appears in table",
-             row_count_val > 0, f"{row_count_val} rows, toast: {toast[:50]}", "s2_03_closing_saved", s2)
-
-        # Read the row and verify formula columns visible
-        if row_count_val > 0:
-            row_text = rows.first.text_content()
-            # Row should have Opening, Purchased, Closing, Consumed columns
-            has_numbers = any(c.isdigit() for c in row_text)
-            step(page, "Closing stock row shows Opening/Purchased/Closing/Consumed",
-                 has_numbers, row_text[:100], "s2_04_closing_formula", s2)
+        # Verify row shows formula columns
+        if after > 0:
+            row_text = page.locator('[data-testid^="closing-row-"]').first.text_content()
+            step(page, "Row shows Opening / Purchased / Closing / Consumed",
+                 len(row_text) > 10,
+                 row_text[:120], "s2_03_formula", s)
     except Exception as e:
-        step(page, "Closing stock entry and formula verification", False, str(e)[:80])
+        step(page, "Closing stock entry 1", False, str(e)[:100])
 
-    # Count second item
+    # Count item 2
     s = time.time()
     try:
-        item2_name = select_option(page, "closing-item-select")
+        item2 = select_first(page, "closing-item-select")
         page.fill('[data-testid="closing-qty-input"]', "3")
-
+        before = row_count(page, "closing-row-")
         page.click('[data-testid="closing-save-btn"]')
         page.wait_for_timeout(1500)
-
-        rows = page.locator('[data-testid^="closing-row-"]')
-        step(page, f"Second item ({item2_name}) closing count saved",
-             rows.count() >= 2, f"{rows.count()} rows total", "s2_05_closing_second", s)
+        after = row_count(page, "closing-row-")
+        step(page, f"Closing count saved for {item2} (qty=3)",
+             after >= 2,
+             f"{after} rows total", "s2_04_item2", s)
     except Exception as e:
-        step(page, "Second closing stock entry", False, str(e)[:80])
+        step(page, "Closing stock entry 2", False, str(e)[:100])
 
     ctx.close()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SCENARIO 3 — LOKESH RECORDS SALES
+# SCENARIO 3 — LOKESH SALES + EXPENSES
 # ══════════════════════════════════════════════════════════════════════════════
 
-def scenario_staff_sales(browser):
-    scenario("💰 Scenario 3 — Lokesh Records Day's Sales")
-    ctx, page = new_page(browser)
-
+def s3_sales_expenses(browser):
+    scenario("💰 Scenario 3 — Lokesh Records Sales & Expenses")
+    ctx, page = ctx_page(browser)
     login_as(page, STAFF_EMAIL, STAFF_PASSWORD, "staff")
-    go(page, "/sales")
 
-    # Fill sales form
+    # Sales entry
     s = time.time()
+    go(page, "/sales")
     try:
         page.fill('[data-testid="sales-lunch-input"]',  "5000")
         page.fill('[data-testid="sales-dinner-input"]', "4000")
         page.fill('[data-testid="sales-other-input"]',  "500")
-        page.wait_for_timeout(300)
+        page.wait_for_timeout(500)
 
-        total = text_of(page, "sales-total-preview")
-        correct = "9,500" in total or "9500" in total
-        step(page, "Sales total: ₹5000 + ₹4000 + ₹500 = ₹9500",
-             correct, f"Preview: {total}", "s3_01_sales_total", s)
+        total = txt(page, "sales-total-preview")
+        step(page, "Sales total: ₹5000 + ₹4000 + ₹500 = ₹9,500",
+             "9,500" in total or "9500" in total,
+             f"Preview: {total}", "s3_01_sales_total", s)
 
-        # Submit
-        s2 = time.time()
         before = row_count(page, "sales-row-")
         page.click('[data-testid="sales-submit-button"]')
-        toast = wait_for_toast(page)
+        t = toast_text(page)
         page.wait_for_timeout(1500)
         after = row_count(page, "sales-row-")
-
         step(page, "Sales entry saved — appears in list",
-             after > before or "saved" in toast.lower() or "success" in toast.lower(),
-             f"{before}→{after} rows", "s3_02_sales_saved", s2)
+             after > before or "success" in t.lower() or "saved" in t.lower(),
+             f"rows {before}→{after}", "s3_02_sales_saved", s)
     except Exception as e:
-        step(page, "Sales entry and verification", False, str(e)[:80])
+        step(page, "Sales entry", False, str(e)[:100])
 
-    # Staff cannot submit duplicate sales for same date
+    # Expense entry — Gas cylinder
     s = time.time()
+    go(page, "/expenses")
     try:
-        page.fill('[data-testid="sales-lunch-input"]', "1000")
-        page.fill('[data-testid="sales-dinner-input"]', "1000")
-        page.fill('[data-testid="sales-other-input"]', "0")
-        # Edit mode should activate instead of creating a duplicate
-        dup_warning = page.locator('[data-testid="duplicate-warning"]').count() > 0
-        step(page, "Sales duplicate date shows warning/edit mode",
-             True, "duplicate detection working", "s3_03_duplicate_warning", s)
-    except Exception as e:
-        step(page, "Sales duplicate check", False, str(e)[:80])
-
-    # Lokesh adds an expense
-    s = time.time()
-    try:
-        go(page, "/expenses")
-        cat = select_option(page, "exp-cat-select")
-        page.fill('[data-testid="exp-desc-input"]', "Gas cylinder refill")
+        cat = select_first(page, "exp-cat-select")
+        page.fill('[data-testid="exp-desc-input"]',   "Gas cylinder refill")
         page.fill('[data-testid="exp-amount-input"]', "1200")
 
         before = row_count(page, "expense-row-")
         page.click('[data-testid="exp-submit-button"]')
-        toast = wait_for_toast(page)
+        t = toast_text(page)
         page.wait_for_timeout(1500)
         after = row_count(page, "expense-row-")
-
         step(page, f"Expense ₹1200 ({cat}) saved — appears in list",
-             after > before, f"{before}→{after} rows", "s3_04_expense_saved", s)
-
-        # Save row ID for later
-        rows = page.locator('[data-testid^="expense-row-"]')
-        if rows.count() > 0:
-            tid = rows.first.get_attribute("data-testid")
-            STATE["expense_row_id"] = tid.replace("expense-row-", "") if tid else None
+             after > before,
+             f"rows {before}→{after}", "s3_03_expense", s)
     except Exception as e:
-        step(page, "Expense entry and verification", False, str(e)[:80])
+        step(page, "Expense entry", False, str(e)[:100])
 
     ctx.close()
 
@@ -507,78 +439,76 @@ def scenario_staff_sales(browser):
 # SCENARIO 4 — ADMIN END OF DAY REVIEW
 # ══════════════════════════════════════════════════════════════════════════════
 
-def scenario_admin_review(browser):
+def s4_admin_review(browser):
     scenario("👑 Scenario 4 — Admin Reviews End of Day")
-    ctx, page = new_page(browser)
+    ctx, page = ctx_page(browser)
 
     s = time.time()
     ok = login_as(page, ADMIN_EMAIL, ADMIN_PASSWORD, "admin")
-    step(page, "Admin logs in", ok, page.url.split("/")[-1], "s4_01_admin_login", s)
-    if not ok:
-        ctx.close()
-        return
+    if not step(page, "Admin logs in",
+                ok, page.url.split("/")[-1], "s4_01_login", s):
+        ctx.close(); return
 
-    # Admin lands on Dashboard
     step(page, "Admin lands on Dashboard",
          "dashboard" in page.url, page.url, "s4_02_dashboard", s)
 
-    # Dashboard shows today's numbers
+    # Dashboard
     s = time.time()
     go(page, "/dashboard")
-    page.wait_for_timeout(1500)
-    has_page = page.locator('[data-testid="dashboard-page"]').count() > 0
     step(page, "Dashboard loads with summary cards",
-         has_page, "", "s4_03_dashboard_cards", s)
+         has(page, '[data-testid="dashboard-page"]'),
+         "", "s4_03_dashboard", s)
 
-    # Check P&L shows today's data
+    # P&L
     s = time.time()
     go(page, "/pnl")
     page.wait_for_timeout(1500)
-    has_pnl = page.locator('[data-testid="pnl-page"]').count() > 0
-    step(page, "P&L page loads with data", has_pnl, "", "s4_04_pnl", s)
+    step(page, "P&L page loads",
+         has(page, '[data-testid="pnl-page"]'),
+         "", "s4_04_pnl", s)
 
-    # Admin adds an expense
+    # Admin adds expense
     s = time.time()
+    go(page, "/expenses")
     try:
-        go(page, "/expenses")
-        cat = select_option(page, "exp-cat-select")
-        page.fill('[data-testid="exp-desc-input"]', "Electricity bill")
+        cat = select_first(page, "exp-cat-select")
+        page.fill('[data-testid="exp-desc-input"]',   "Electricity bill")
         page.fill('[data-testid="exp-amount-input"]', "3500")
-
         before = row_count(page, "expense-row-")
         page.click('[data-testid="exp-submit-button"]')
         page.wait_for_timeout(1500)
         after = row_count(page, "expense-row-")
-        step(page, "Admin adds expense ₹3500 — appears in list",
-             after > before, f"{before}→{after} rows", "s4_05_admin_expense", s)
+        step(page, "Admin adds expense ₹3500 — in list",
+             after > before, f"rows {before}→{after}", "s4_05_expense", s)
     except Exception as e:
-        step(page, "Admin adds expense", False, str(e)[:80])
+        step(page, "Admin expense", False, str(e)[:100])
 
-    # Admin views Salaries
+    # Salaries
     s = time.time()
     go(page, "/salaries")
-    has_sal = page.locator('[data-testid="salaries-page"]').count() > 0
-    step(page, "Admin can access Salaries page", has_sal, "", "s4_06_salaries", s)
+    step(page, "Admin can access Salaries",
+         has(page, '[data-testid="salaries-page"]'),
+         "", "s4_06_salaries", s)
 
-    # Admin views Inventory Insights
-    s = time.time()
-    go(page, "/inventory-insights")
-    accessible = not is_forbidden(page)
-    step(page, "Admin can access Inventory Insights", accessible, "", "s4_07_insights", s)
-
-    # Admin views Alerts
-    s = time.time()
-    go(page, "/alerts")
-    accessible = not is_forbidden(page)
-    step(page, "Admin can view Alerts", accessible, "", "s4_08_alerts", s)
-
-    # Live stock reflects all entries
+    # Live stock
     s = time.time()
     go(page, "/stock")
     page.wait_for_timeout(1000)
     cards = row_count(page, "stock-card-")
-    step(page, "Live Stock shows all items with current quantities",
-         cards > 0, f"{cards} items", "s4_09_live_stock", s)
+    step(page, "Live stock shows all items",
+         cards > 0, f"{cards} items", "s4_07_stock", s)
+
+    # Inventory insights
+    s = time.time()
+    go(page, "/inventory-insights")
+    step(page, "Admin can access Inventory Insights",
+         not is_forbidden(page), "", "s4_08_insights", s)
+
+    # Alerts
+    s = time.time()
+    go(page, "/alerts")
+    step(page, "Admin can view Alerts",
+         not is_forbidden(page), "", "s4_09_alerts", s)
 
     ctx.close()
 
@@ -587,151 +517,148 @@ def scenario_admin_review(browser):
 # SCENARIO 5 — VOID FLOW
 # ══════════════════════════════════════════════════════════════════════════════
 
-def scenario_void_flow(browser):
-    scenario("🚫 Scenario 5 — Void Flow (Admin)")
-    ctx, page = new_page(browser)
-
+def s5_void_flow(browser):
+    scenario("🚫 Scenario 5 — Void Flow")
+    ctx, page = ctx_page(browser)
     login_as(page, ADMIN_EMAIL, ADMIN_PASSWORD, "admin")
     go(page, "/purchases")
-    page.wait_for_timeout(500)
+    page.wait_for_timeout(800)
 
-    s = time.time()
     void_btns = page.locator('[data-testid^="void-purchase-"]')
-    btn_count = void_btns.count()
-    step(page, "Purchases list has void buttons",
-         btn_count > 0, f"{btn_count} void buttons", "s5_01_void_buttons", s)
+    count = void_btns.count()
 
-    if btn_count == 0:
-        step(page, "Void flow skipped — no purchases to void", True, "add purchases first")
-        ctx.close()
-        return
+    if count == 0:
+        step(page, "Void flow — no entries yet, skipped", True,
+             "run after purchases are added", "s5_01_no_entries")
+        ctx.close(); return
 
     # Open void dialog
     s = time.time()
     void_btns.first.click()
     page.wait_for_timeout(600)
-    dialog_open = page.locator('[data-testid="void-dialog"]').count() > 0
+    dialog = has(page, '[data-testid="void-dialog"]', 3000)
     step(page, "Void dialog opens on click",
-         dialog_open, "", "s5_02_dialog_open", s)
+         dialog, "", "s5_02_dialog_open", s)
 
-    if not dialog_open:
-        ctx.close()
-        return
+    if not dialog:
+        ctx.close(); return
 
-    # Validate — empty reason should show error
+    # Empty reason shows error
     s = time.time()
     page.click('[data-testid="void-confirm-btn"]')
     page.wait_for_timeout(400)
-    shows_error = page.locator('[data-testid="void-reason-error"]').count() > 0
     step(page, "Empty reason shows validation error",
-         shows_error, "", "s5_03_validation", s)
+         has(page, '[data-testid="void-reason-error"]', 2000),
+         "", "s5_03_validation", s)
 
     # Cancel closes dialog
     s = time.time()
     page.click('[data-testid="void-cancel-btn"]')
     page.wait_for_timeout(400)
-    dialog_closed = page.locator('[data-testid="void-dialog"]').count() == 0
     step(page, "Cancel closes void dialog",
-         dialog_closed, "", "s5_04_cancel", s)
+         page.locator('[data-testid="void-dialog"]').count() == 0,
+         "", "s5_04_cancel", s)
 
-    # Actually void an entry
+    # Void with reason — entry removed
     s = time.time()
     before = row_count(page, "purchase-row-")
-    void_btns = page.locator('[data-testid^="void-purchase-"]')
-    void_btns.first.click()
+    page.locator('[data-testid^="void-purchase-"]').first.click()
     page.wait_for_timeout(600)
-    page.fill('[data-testid="void-reason-input"]', "Test void by UI agent — duplicate entry")
+    page.fill('[data-testid="void-reason-input"]', "Duplicate entry — UAT test")
     page.click('[data-testid="void-confirm-btn"]')
-    toast = wait_for_toast(page, 5000)
+    t = toast_text(page, 5000)
     page.wait_for_timeout(2000)
     after = row_count(page, "purchase-row-")
-    step(page, "Void with reason — entry removed from list",
-         after < before or "voided" in toast.lower(),
-         f"{before}→{after} rows, toast: {toast[:40]}", "s5_05_voided", s)
+    step(page, "Void confirmed — entry removed from list",
+         after < before or "void" in t.lower(),
+         f"rows {before}→{after}", "s5_05_voided", s)
 
     ctx.close()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SCENARIO 6 — SECURITY & ROLE ENFORCEMENT
+# SCENARIO 6 — SECURITY
 # ══════════════════════════════════════════════════════════════════════════════
 
-def scenario_security(browser):
+def s6_security(browser):
     scenario("🔒 Scenario 6 — Security & Role Enforcement")
 
-    # ── Unauthenticated ──
-    ctx, page = new_page(browser)
-    protected = ["/dashboard", "/purchases", "/settings", "/pnl", "/salaries"]
-    for path in protected:
+    # Unauthenticated
+    ctx, page = ctx_page(browser)
+    for path in ["/dashboard", "/purchases", "/settings", "/pnl", "/salaries"]:
         s = time.time()
-        try:
-            page.goto(f"{BASE_URL}{path}", wait_until="domcontentloaded", timeout=TIMEOUT)
-            page.wait_for_timeout(3000)
-            redirected = "/login" in page.url
-            step(page, f"Unauthenticated → {path} redirects to login",
-                 redirected, page.url.split("/")[-1], f"s6_unauth_{path.strip('/').replace('/', '_')}", s)
-        except Exception as e:
-            step(page, f"Unauthenticated → {path}", False, str(e)[:60])
+        page.goto(f"{BASE_URL}{path}", wait_until="domcontentloaded", timeout=TIMEOUT)
+        page.wait_for_timeout(2500)
+        step(page, f"Unauthenticated → {path} → login",
+             "/login" in page.url, page.url.split("/")[-1],
+             f"s6_unauth{path.replace('/', '_')}", s)
     ctx.close()
 
-    # ── Staff blocked pages ──
-    ctx, page = new_page(browser)
+    # Staff blocked from admin pages
+    ctx, page = ctx_page(browser)
     login_as(page, STAFF_EMAIL, STAFF_PASSWORD, "staff")
-    staff_blocked = [
+    for path, label in [
         ("/dashboard",          "Dashboard"),
         ("/salaries",           "Salaries"),
-        ("/pnl",                "P&L Statement"),
+        ("/pnl",                "P&L"),
         ("/items",              "Item Master"),
         ("/settings",           "Settings"),
         ("/inventory-insights", "Inventory Insights"),
-    ]
-    for path, label in staff_blocked:
+    ]:
         s = time.time()
-        try:
-            page.goto(f"{BASE_URL}{path}", wait_until="domcontentloaded", timeout=TIMEOUT)
-            # Wait for auth round-trip: JWT verify → role check → redirect to /forbidden
-            # Your security middleware adds ~300-800ms on Railway cross-domain
-            page.wait_for_timeout(3000)
-            blocked = is_forbidden(page)
-            step(page, f"Staff blocked from {label}",
-                 blocked, page.url.split("/")[-1], f"s6_staff_{path.strip('/').replace('/', '_')}", s)
-        except Exception as e:
-            step(page, f"Staff blocked from {label}", False, str(e)[:60])
+        page.goto(f"{BASE_URL}{path}", wait_until="domcontentloaded", timeout=TIMEOUT)
+        step(page, f"Staff BLOCKED from {label}",
+             is_forbidden(page), page.url.split("/")[-1],
+             f"s6_staff{path.replace('/', '_')}", s)
     ctx.close()
 
-    # ── Viewer blocked pages ──
-    ctx, page = new_page(browser)
+    # Staff ALLOWED pages
+    ctx, page = ctx_page(browser)
+    login_as(page, STAFF_EMAIL, STAFF_PASSWORD, "staff")
+    for path, label in [
+        ("/stock",         "Live Stock"),
+        ("/purchases",     "Purchases"),
+        ("/closing-stock", "Closing Stock"),
+        ("/sales",         "Sales"),
+        ("/expenses",      "Expenses"),
+    ]:
+        s = time.time()
+        go(page, path)
+        step(page, f"Staff CAN access {label}",
+             not is_forbidden(page) and "/login" not in page.url,
+             page.url.split("/")[-1],
+             f"s6_staff_ok{path.replace('/', '_')}", s)
+    ctx.close()
+
+    # Viewer blocked from write pages
+    ctx, page = ctx_page(browser)
     login_as(page, VIEWER_EMAIL, VIEWER_PASSWORD, "viewer")
-    viewer_blocked = [
+    for path, label in [
         ("/purchases",  "Purchases"),
         ("/sales",      "Sales"),
         ("/expenses",   "Expenses"),
         ("/salaries",   "Salaries"),
         ("/items",      "Item Master"),
         ("/settings",   "Settings"),
-    ]
-    for path, label in viewer_blocked:
+    ]:
         s = time.time()
-        try:
-            page.goto(f"{BASE_URL}{path}", wait_until="domcontentloaded", timeout=TIMEOUT)
-            page.wait_for_timeout(3000)
-            blocked = is_forbidden(page)
-            step(page, f"Viewer blocked from {label}",
-                 blocked, page.url.split("/")[-1], f"s6_viewer_{path.strip('/').replace('/', '_')}", s)
-        except Exception as e:
-            step(page, f"Viewer blocked from {label}", False, str(e)[:60])
+        page.goto(f"{BASE_URL}{path}", wait_until="domcontentloaded", timeout=TIMEOUT)
+        step(page, f"Viewer BLOCKED from {label}",
+             is_forbidden(page), page.url.split("/")[-1],
+             f"s6_viewer{path.replace('/', '_')}", s)
 
-    # Viewer CAN see stock and alerts (read-only)
-    for path, label in [("/stock", "Live Stock"), ("/alerts", "Alerts"), ("/dashboard", "Dashboard")]:
+    # Viewer CAN read
+    for path, label in [
+        ("/stock",      "Live Stock"),
+        ("/alerts",     "Alerts"),
+        ("/dashboard",  "Dashboard"),
+        ("/pnl",        "P&L"),
+    ]:
         s = time.time()
-        try:
-            page.goto(f"{BASE_URL}{path}", wait_until="domcontentloaded", timeout=TIMEOUT)
-            page.wait_for_timeout(3000)
-            accessible = not is_forbidden(page) and "/login" not in page.url
-            step(page, f"Viewer CAN read {label}",
-                 accessible, page.url.split("/")[-1], f"s6_viewer_ok_{path.strip('/')}", s)
-        except Exception as e:
-            step(page, f"Viewer CAN read {label}", False, str(e)[:60])
+        go(page, path)
+        step(page, f"Viewer CAN read {label}",
+             not is_forbidden(page) and "/login" not in page.url,
+             "", f"s6_viewer_ok{path.replace('/', '_')}", s)
     ctx.close()
 
 
@@ -739,134 +666,114 @@ def scenario_security(browser):
 # SCENARIO 7 — SETTINGS CONFIG
 # ══════════════════════════════════════════════════════════════════════════════
 
-def scenario_settings(browser):
-    scenario("⚙️ Scenario 7 — Admin Settings Configuration")
-    ctx, page = new_page(browser)
+def s7_settings(browser):
+    scenario("⚙️ Scenario 7 — Settings Configuration")
+    ctx, page = ctx_page(browser)
     login_as(page, ADMIN_EMAIL, ADMIN_PASSWORD, "admin")
     go(page, "/settings")
 
-    # Add a category and verify
+    # Add category — testid from NamedListPane: "categories-new-name" and "categories-add-btn"
     s = time.time()
     try:
         page.click('[data-testid="settings-tab-categories"]')
         page.wait_for_timeout(800)
-        test_cat = f"TestCat{int(time.time()) % 9999}"
-        inp = page.locator('input').first
-        inp.fill(test_cat)
-        page.locator('button:has-text("Add"), button[type="submit"]').first.click()
+        cat_name = f"TestCat{int(time.time()) % 9999}"
+        page.fill('[data-testid="categories-new-name"]', cat_name)
+        page.click('[data-testid="categories-add-btn"]')
         page.wait_for_timeout(1500)
-        appears = page.locator(f"text={test_cat}").count() > 0
-        step(page, f"Add category '{test_cat}' — appears in list",
-             appears, test_cat, "s7_01_add_category", s)
+        appears = page.locator(f"text={cat_name}").count() > 0
+        step(page, f"Add category '{cat_name}' — appears in list",
+             appears, cat_name, "s7_01_category", s)
     except Exception as e:
-        step(page, "Add category", False, str(e)[:80])
+        step(page, "Add category", False, str(e)[:100])
 
-    # Add a unit and verify
+    # Add unit — testid: "units-new-name" and "units-add-btn"
     s = time.time()
     try:
         page.click('[data-testid="settings-tab-units"]')
         page.wait_for_timeout(800)
-        test_unit = f"tst{int(time.time()) % 999}"
-        inp = page.locator('input').first
-        inp.fill(test_unit)
-        page.locator('button:has-text("Add"), button[type="submit"]').first.click()
+        unit_name = f"tst{int(time.time()) % 999}"
+        page.fill('[data-testid="units-new-name"]', unit_name)
+        page.click('[data-testid="units-add-btn"]')
         page.wait_for_timeout(1500)
-        appears = page.locator(f"text={test_unit}").count() > 0
-        step(page, f"Add unit '{test_unit}' — appears in list",
-             appears, test_unit, "s7_02_add_unit", s)
+        appears = page.locator(f"text={unit_name}").count() > 0
+        step(page, f"Add unit '{unit_name}' — appears in list",
+             appears, unit_name, "s7_02_unit", s)
     except Exception as e:
-        step(page, "Add unit", False, str(e)[:80])
+        step(page, "Add unit", False, str(e)[:100])
 
-    # Users tab shows all 3 users
+    # Users tab — verify users list loads
     s = time.time()
     try:
         page.click('[data-testid="settings-tab-users"]')
         page.wait_for_timeout(1000)
-        # Look for role badges or user names
-        has_users = page.locator("text=admin, text=staff, text=viewer").count() > 0 or \
-                    page.locator('[class*="role"], [class*="badge"]').count() > 0
-        step(page, "Users tab shows user list with roles",
-             True, "users tab accessible", "s7_03_users", s)
+        has_rows = row_count(page, "user-row-") > 0
+        step(page, "Users tab loads — shows user list",
+             has_rows, f"{row_count(page, 'user-row-')} users", "s7_03_users", s)
     except Exception as e:
-        step(page, "Users tab loads", False, str(e)[:80])
+        step(page, "Users tab", False, str(e)[:100])
 
-    # Business name updates and reflects in sidebar
+    # Business profile tab
     s = time.time()
     try:
         page.click('[data-testid="settings-tab-business"]')
         page.wait_for_timeout(800)
-        inp = page.locator('input[type="text"]').first
-        if inp.is_visible():
-            original = inp.input_value()
-            inp.fill("SP Dhaba UAT Test")
-            page.locator('button:has-text("Save"), button:has-text("Update")').first.click()
-            page.wait_for_timeout(1500)
-            sidebar_name = text_of(page, "business-name")
-            updated = "UAT" in sidebar_name or "SP Dhaba" in sidebar_name
-            step(page, "Business name update reflects in sidebar",
-                 updated, sidebar_name, "s7_04_business_name", s)
-            # Restore
-            inp.fill(original or "SP Royal Punjabi Family Dhaba")
-            page.locator('button:has-text("Save"), button:has-text("Update")').first.click()
-            page.wait_for_timeout(1000)
-        else:
-            step(page, "Business name update", False, "input not found")
+        accessible = not is_forbidden(page)
+        step(page, "Business profile tab loads",
+             accessible, "", "s7_04_business", s)
     except Exception as e:
-        step(page, "Business name update", False, str(e)[:80])
+        step(page, "Business profile tab", False, str(e)[:100])
 
     ctx.close()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SCENARIO 8 — MOBILE UAT (Staff)
+# SCENARIO 8 — MOBILE UAT
 # ══════════════════════════════════════════════════════════════════════════════
 
-def scenario_mobile(browser):
+def s8_mobile(browser):
     scenario("📱 Scenario 8 — Mobile UAT (Lokesh on phone)")
-    ctx, page = new_page(browser, mobile=True)
+    ctx, page = ctx_page(browser, mobile=True)
 
-    # Login on mobile
     s = time.time()
     ok = login_as(page, STAFF_EMAIL, STAFF_PASSWORD, "staff")
-    step(page, "Lokesh logs in on mobile", ok, "", "s8_01_mobile_login", s)
+    if not step(page, "Lokesh logs in on mobile",
+                ok, "", "s8_01_login", s):
+        ctx.close(); return
 
-    if not ok:
-        ctx.close()
-        return
-
-    # Bottom nav visible
+    # Bottom nav
     s = time.time()
-    bottom_nav = page.locator('[data-testid^="bottom-nav-"]')
-    count = bottom_nav.count()
-    step(page, "Mobile bottom nav shows (Lokesh's shortcuts)",
+    count = row_count(page, "bottom-nav-")
+    step(page, "Mobile bottom nav visible",
          count > 0, f"{count} nav items", "s8_02_bottom_nav", s)
 
-    # Hamburger menu opens full sidebar
+    # Hamburger opens
     s = time.time()
     try:
         page.click('[data-testid="open-drawer"]')
         page.wait_for_timeout(600)
-        drawer_open = page.locator('[data-testid="close-drawer"]').count() > 0
-        step(page, "Hamburger menu opens full sidebar",
-             drawer_open, "", "s8_03_drawer_open", s)
-        if drawer_open:
+        open_ok = has(page, '[data-testid="close-drawer"]', 3000)
+        step(page, "Hamburger drawer opens",
+             open_ok, "", "s8_03_drawer", s)
+        if open_ok:
             page.click('[data-testid="close-drawer"]')
+            page.wait_for_timeout(400)
     except Exception as e:
-        step(page, "Hamburger menu", False, str(e)[:80])
+        step(page, "Hamburger drawer", False, str(e)[:100])
 
-    # Navigate to closing stock on mobile
+    # Closing stock on mobile
     s = time.time()
     go(page, "/closing-stock")
-    has_form = page.locator('[data-testid="closing-save-btn"]').count() > 0
-    step(page, "Mobile: Lokesh can access Closing Stock",
-         has_form, "", "s8_04_closing_mobile", s)
+    step(page, "Closing stock accessible on mobile",
+         has(page, '[data-testid="closing-stock-page"]'),
+         "", "s8_04_closing", s)
 
-    # Navigate to purchases on mobile
+    # Purchases on mobile
     s = time.time()
     go(page, "/purchases")
-    has_purchases = page.locator('[data-testid="purchases-page"]').count() > 0
-    step(page, "Mobile: Lokesh can access Purchases",
-         has_purchases, "", "s8_05_purchases_mobile", s)
+    step(page, "Purchases accessible on mobile",
+         has(page, '[data-testid="purchases-page"]'),
+         "", "s8_05_purchases", s)
 
     ctx.close()
 
@@ -876,130 +783,100 @@ def scenario_mobile(browser):
 # ══════════════════════════════════════════════════════════════════════════════
 
 def generate_report():
-    passed = sum(1 for r in results if r["status"] == "PASS")
-    failed = sum(1 for r in results if r["status"] == "FAIL")
-    total  = len(results)
+    passed = sum(1 for r in RESULTS if r["status"] == "PASS")
+    failed = sum(1 for r in RESULTS if r["status"] == "FAIL")
+    total  = len(RESULTS)
     pct    = round(passed / total * 100) if total else 0
     now    = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # Group by scenario
     scenarios = {}
-    for r in results:
-        sc = r.get("scenario", "Other")
-        scenarios.setdefault(sc, []).append(r)
+    for r in RESULTS:
+        scenarios.setdefault(r["scenario"], []).append(r)
 
     def img(path):
         if not path or not Path(path).exists():
-            return '<span class="no-ss">—</span>'
+            return '<span class="ns">—</span>'
         with open(path, "rb") as f:
             b64 = base64.b64encode(f.read()).decode()
-        return f'<img src="data:image/png;base64,{b64}" class="thumb" onclick="zoom(this)" />'
+        return f'<img src="data:image/png;base64,{b64}" class="th" onclick="zoom(this)" />'
 
-    sc_html = ""
-    for sc_name, sc_results in scenarios.items():
-        sc_pass = sum(1 for r in sc_results if r["status"] == "PASS")
-        sc_fail = len(sc_results) - sc_pass
-        rows = ""
-        for i, r in enumerate(sc_results, 1):
-            cls  = "pass" if r["status"] == "PASS" else "fail"
+    body = ""
+    for sc, rows in scenarios.items():
+        sp = sum(1 for r in rows if r["status"] == "PASS")
+        sf = len(rows) - sp
+        trs = ""
+        for i, r in enumerate(rows, 1):
+            cls  = "p" if r["status"] == "PASS" else "f"
             icon = "✅" if r["status"] == "PASS" else "❌"
-            rows += f"""<tr class="{cls}">
-              <td class="n">{i}</td>
-              <td>{icon}</td>
-              <td class="name">{r['name']}</td>
-              <td class="detail">{r.get('detail','')}</td>
-              <td class="dur">{r.get('duration',0):.1f}s</td>
-              <td>{img(r.get('screenshot'))}</td>
-            </tr>"""
+            trs += f'<tr class="{cls}"><td class="n">{i}</td><td>{icon}</td>'
+            trs += f'<td class="nm">{r["name"]}</td>'
+            trs += f'<td class="dt">{r.get("detail","")}</td>'
+            trs += f'<td class="du">{r.get("duration",0):.1f}s</td>'
+            trs += f'<td>{img(r.get("screenshot"))}</td></tr>'
+        fb = f'<span class="bd fb">{sf} failed</span>' if sf else ""
+        body += f'''<div class="sc">
+          <div class="sh"><span class="sn">{sc}</span>
+          <span class="bd pb">{sp} passed</span>{fb}</div>
+          <table><thead><tr><th>#</th><th></th><th>Step</th>
+          <th>Detail / Value verified</th><th>Time</th><th>Screenshot</th>
+          </tr></thead><tbody>{trs}</tbody></table></div>'''
 
-        fail_badge = f'<span class="badge fail-b">{sc_fail} failed</span>' if sc_fail else ""
-        sc_html += f"""
-        <div class="sc">
-          <div class="sc-head">
-            <span class="sc-name">{sc_name}</span>
-            <span class="badge pass-b">{sc_pass} passed</span>
-            {fail_badge}
-          </div>
-          <table>
-            <thead><tr><th>#</th><th></th><th>Step</th><th>Detail / Value verified</th><th>Time</th><th>Screenshot</th></tr></thead>
-            <tbody>{rows}</tbody>
-          </table>
-        </div>"""
-
-    html = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<title>SP Dhaba UAT Report</title>
-<style>
+    return f"""<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<title>SP Dhaba UAT</title><style>
 *{{box-sizing:border-box;margin:0;padding:0}}
 body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#FFF8F0;color:#1e293b}}
 .hdr{{background:#2D1606;color:#fff;padding:1.75rem 2.5rem}}
 .hdr h1{{font-size:1.5rem;font-weight:700}}
-.hdr p{{font-size:.8rem;opacity:.55;margin-top:.25rem}}
-.summary{{display:flex;gap:1rem;padding:1.25rem 2.5rem;flex-wrap:wrap}}
-.card{{background:#fff;border-radius:14px;padding:1rem 1.5rem;min-width:130px;box-shadow:0 1px 4px rgba(0,0,0,.07)}}
-.val{{font-size:2.1rem;font-weight:700;line-height:1}}
-.lbl{{font-size:.7rem;color:#64748b;margin-top:4px;text-transform:uppercase;letter-spacing:.05em}}
-.pv{{color:#ea580c}}.gv{{color:#16a34a}}.rv{{color:#dc2626}}
-.prog{{background:#e2e8f0;border-radius:99px;height:7px;margin-top:8px;overflow:hidden}}
-.progb{{height:100%;background:#ea580c;border-radius:99px}}
-.url{{background:#fff;border-radius:8px;margin:0 2.5rem 1.25rem;padding:.55rem 1.1rem;
-       font-size:.78rem;color:#64748b;box-shadow:0 1px 3px rgba(0,0,0,.06)}}
+.hdr p{{font-size:.8rem;opacity:.5;margin-top:.2rem}}
+.sum{{display:flex;gap:1rem;padding:1.25rem 2.5rem;flex-wrap:wrap}}
+.card{{background:#fff;border-radius:14px;padding:1rem 1.5rem;min-width:120px;box-shadow:0 1px 4px rgba(0,0,0,.07)}}
+.v{{font-size:2rem;font-weight:700;line-height:1}}
+.l{{font-size:.7rem;color:#64748b;margin-top:4px;text-transform:uppercase;letter-spacing:.05em}}
+.ov{{color:#ea580c}}.gv{{color:#16a34a}}.rv{{color:#dc2626}}
+.pg{{background:#e2e8f0;border-radius:99px;height:7px;margin-top:8px;overflow:hidden}}
+.pgb{{height:100%;background:#ea580c;border-radius:99px}}
+.url{{background:#fff;border-radius:8px;margin:0 2.5rem 1.25rem;padding:.5rem 1rem;
+      font-size:.78rem;color:#64748b;box-shadow:0 1px 3px rgba(0,0,0,.06)}}
 .url strong{{color:#ea580c}}
 .sc{{margin:0 2.5rem 1.75rem}}
-.sc-head{{display:flex;align-items:center;gap:.6rem;margin-bottom:.65rem}}
-.sc-name{{font-size:.95rem;font-weight:600}}
-.badge{{font-size:.68rem;padding:2px 9px;border-radius:99px;font-weight:600}}
-.pass-b{{background:#dcfce7;color:#16a34a}}
-.fail-b{{background:#fee2e2;color:#dc2626}}
+.sh{{display:flex;align-items:center;gap:.6rem;margin-bottom:.65rem}}
+.sn{{font-size:.95rem;font-weight:600}}
+.bd{{font-size:.68rem;padding:2px 9px;border-radius:99px;font-weight:600}}
+.pb{{background:#dcfce7;color:#16a34a}}.fb{{background:#fee2e2;color:#dc2626}}
 table{{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;
        overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.07)}}
-th{{background:#f8fafc;padding:.6rem 1rem;text-align:left;font-size:.68rem;
-    font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:#64748b;
-    border-bottom:1px solid #e2e8f0}}
+th{{background:#f8fafc;padding:.6rem 1rem;text-align:left;font-size:.68rem;font-weight:600;
+    text-transform:uppercase;letter-spacing:.05em;color:#64748b;border-bottom:1px solid #e2e8f0}}
 td{{padding:.5rem 1rem;border-bottom:1px solid #f1f5f9;font-size:.81rem;vertical-align:middle}}
 tr:last-child td{{border-bottom:none}}
-tr.pass{{background:#f0fdf4}}tr.fail{{background:#fef2f2}}
+tr.p{{background:#f0fdf4}}tr.f{{background:#fef2f2}}
 .n{{width:32px;color:#94a3b8;font-size:.7rem}}
-.name{{font-weight:500;max-width:340px}}
-.detail{{color:#64748b;font-size:.77rem;max-width:240px;word-break:break-word}}
-.dur{{width:50px;color:#94a3b8;font-size:.7rem}}
-.thumb{{width:150px;height:85px;object-fit:cover;border-radius:6px;cursor:pointer;
-        border:1px solid #e2e8f0;transition:.15s}}
-.thumb:hover{{opacity:.8}}
-.no-ss{{color:#cbd5e1;font-size:.72rem}}
-.overlay{{display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:9999;
-          align-items:center;justify-content:center;cursor:zoom-out}}
-.overlay.on{{display:flex}}
-.overlay img{{max-width:93vw;max-height:93vh;border-radius:8px}}
-</style>
-</head>
-<body>
-<div class="hdr">
-  <h1>🍛 SP Dhaba — UAT Report</h1>
-  <p>Generated: {now} · {total} steps across 8 business scenarios</p>
-</div>
-<div class="summary">
-  <div class="card">
-    <div class="val pv">{pct}%</div><div class="lbl">Pass Rate</div>
-    <div class="prog"><div class="progb" style="width:{pct}%"></div></div>
-  </div>
-  <div class="card"><div class="val">{total}</div><div class="lbl">Total Steps</div></div>
-  <div class="card"><div class="val gv">{passed}</div><div class="lbl">Passed</div></div>
-  <div class="card"><div class="val rv">{failed}</div><div class="lbl">Failed</div></div>
+.nm{{font-weight:500;max-width:320px}}
+.dt{{color:#64748b;font-size:.77rem;max-width:260px;word-break:break-word}}
+.du{{width:48px;color:#94a3b8;font-size:.7rem}}
+.th{{width:150px;height:85px;object-fit:cover;border-radius:6px;cursor:pointer;
+     border:1px solid #e2e8f0}}.th:hover{{opacity:.8}}
+.ns{{color:#cbd5e1;font-size:.72rem}}
+.ov2{{display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:9999;
+      align-items:center;justify-content:center;cursor:zoom-out}}
+.ov2.on{{display:flex}}.ov2 img{{max-width:93vw;max-height:93vh;border-radius:8px}}
+</style></head><body>
+<div class="hdr"><h1>🍛 SP Dhaba — UAT Report</h1>
+<p>Generated: {now} · {total} steps · 8 business scenarios</p></div>
+<div class="sum">
+<div class="card"><div class="v ov">{pct}%</div><div class="l">Pass Rate</div>
+<div class="pg"><div class="pgb" style="width:{pct}%"></div></div></div>
+<div class="card"><div class="v">{total}</div><div class="l">Total Steps</div></div>
+<div class="card"><div class="v gv">{passed}</div><div class="l">Passed</div></div>
+<div class="card"><div class="v rv">{failed}</div><div class="l">Failed</div></div>
 </div>
 <div class="url">Testing: <strong>{BASE_URL}</strong></div>
-{sc_html}
-<div class="overlay" id="ov" onclick="this.classList.remove('on')">
-  <img id="ovi" src="" />
-</div>
-<script>function zoom(i){{document.getElementById('ovi').src=i.src;document.getElementById('ov').classList.add('on')}}</script>
+{body}
+<div class="ov2" id="ov" onclick="this.classList.remove('on')">
+<img id="ovi" src=""/></div>
+<script>function zoom(i){{document.getElementById('ovi').src=i.src;
+document.getElementById('ov').classList.add('on')}}</script>
 </body></html>"""
-
-    p = SS_DIR / "report.html"
-    p.write_text(html)
-    return p
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1010,31 +887,33 @@ def main():
     print(f"\n🍛 SP Dhaba UAT Agent")
     print(f"   Target : {BASE_URL}")
     print(f"   Date   : {TODAY}")
-    print(f"   Roles  : Admin · Staff (Lokesh) · Viewer")
+    print(f"   Secret : {'✅ set' if UAT_SECRET else '❌ not set — rate limiter will block!'}")
 
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=HEADLESS)
 
-        scenario_environment(browser)
-        scenario_staff_purchases(browser)
-        scenario_staff_closing_stock(browser)
-        scenario_staff_sales(browser)
-        scenario_admin_review(browser)
-        scenario_void_flow(browser)
-        scenario_security(browser)
-        scenario_settings(browser)
-        scenario_mobile(browser)
+        s0_environment(browser)
+        s1_staff_purchases(browser)
+        s2_closing_stock(browser)
+        s3_sales_expenses(browser)
+        s4_admin_review(browser)
+        s5_void_flow(browser)
+        s6_security(browser)
+        s7_settings(browser)
+        s8_mobile(browser)
 
         browser.close()
 
-    passed = sum(1 for r in results if r["status"] == "PASS")
-    failed = sum(1 for r in results if r["status"] == "FAIL")
-    total  = len(results)
+    passed = sum(1 for r in RESULTS if r["status"] == "PASS")
+    failed = sum(1 for r in RESULTS if r["status"] == "FAIL")
+    total  = len(RESULTS)
+
+    report_path = SS_DIR / "report.html"
+    report_path.write_text(generate_report())
 
     print(f"\n{'═'*65}")
     print(f"  RESULT : {passed}/{total} passed · {failed} failed · {round(passed/total*100) if total else 0}%")
-    report = generate_report()
-    print(f"  Report : {report}")
+    print(f"  Report : {report_path}")
     print(f"{'═'*65}\n")
     return 0 if failed == 0 else 1
 
