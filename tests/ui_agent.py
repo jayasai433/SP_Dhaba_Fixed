@@ -105,15 +105,26 @@ def new_page(browser, mobile=False):
     return ctx, p
 
 def go(page, path):
-    """Navigate and wait for React app to mount."""
+    """
+    Navigate and wait for React app to mount.
+
+    Why the extra wait after domcontentloaded:
+    Your app has JWT auth on every route. After the HTML loads, React
+    must call /api/me, get the response, check the role, then either
+    render the page or redirect to /forbidden. That round-trip takes
+    300-800ms on Railway cross-domain. Without waiting, is_forbidden()
+    runs before the redirect happens → false negative.
+    """
     for attempt in range(3):
         try:
             page.goto(f"{BASE_URL}{path}", wait_until="domcontentloaded", timeout=TIMEOUT)
+            # Wait for any of: logged-in app, login page, or forbidden page
             page.wait_for_selector(
                 '[data-testid="app-shell"], [data-testid="login-page"], [data-testid="forbidden-page"]',
                 timeout=15000
             )
-            page.wait_for_timeout(600)
+            # Extra buffer for auth round-trip + role check + possible redirect
+            page.wait_for_timeout(1200)
             return True
         except Exception:
             if attempt == 2:
@@ -616,7 +627,7 @@ def scenario_security(browser):
         s = time.time()
         try:
             page.goto(f"{BASE_URL}{path}", wait_until="domcontentloaded", timeout=TIMEOUT)
-            page.wait_for_timeout(2000)
+            page.wait_for_timeout(3000)
             redirected = "/login" in page.url
             step(page, f"Unauthenticated → {path} redirects to login",
                  redirected, page.url.split("/")[-1], f"s6_unauth_{path.strip('/').replace('/', '_')}", s)
@@ -639,7 +650,9 @@ def scenario_security(browser):
         s = time.time()
         try:
             page.goto(f"{BASE_URL}{path}", wait_until="domcontentloaded", timeout=TIMEOUT)
-            page.wait_for_timeout(2500)
+            # Wait for auth round-trip: JWT verify → role check → redirect to /forbidden
+            # Your security middleware adds ~300-800ms on Railway cross-domain
+            page.wait_for_timeout(3000)
             blocked = is_forbidden(page)
             step(page, f"Staff blocked from {label}",
                  blocked, page.url.split("/")[-1], f"s6_staff_{path.strip('/').replace('/', '_')}", s)
@@ -662,7 +675,7 @@ def scenario_security(browser):
         s = time.time()
         try:
             page.goto(f"{BASE_URL}{path}", wait_until="domcontentloaded", timeout=TIMEOUT)
-            page.wait_for_timeout(2500)
+            page.wait_for_timeout(3000)
             blocked = is_forbidden(page)
             step(page, f"Viewer blocked from {label}",
                  blocked, page.url.split("/")[-1], f"s6_viewer_{path.strip('/').replace('/', '_')}", s)
@@ -674,7 +687,7 @@ def scenario_security(browser):
         s = time.time()
         try:
             page.goto(f"{BASE_URL}{path}", wait_until="domcontentloaded", timeout=TIMEOUT)
-            page.wait_for_timeout(2000)
+            page.wait_for_timeout(3000)
             accessible = not is_forbidden(page) and "/login" not in page.url
             step(page, f"Viewer CAN read {label}",
                  accessible, page.url.split("/")[-1], f"s6_viewer_ok_{path.strip('/')}", s)
