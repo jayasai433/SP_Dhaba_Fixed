@@ -70,23 +70,50 @@ async def ensure_user(email, password, name, role):
 
 async def _safe_create_index(collection, keys, **kwargs):
     """
-    Create an index safely — drops conflicting index by name first.
-    Prevents IndexKeySpecsConflict on re-deploy to existing DBs
-    (e.g. staging DB that already has non-unique date_1 on sales).
+    Create an index safely — handles both conflict types:
+
+    Code 85 IndexOptionsConflict:
+      Same key, different name (e.g. auto-named "email_1" vs our "users_email_unique")
+      → drop ALL existing indexes on that key pattern, then recreate
+
+    Code 86 IndexKeySpecsConflict:
+      Same name, different options (e.g. non-unique vs unique "date_1")
+      → drop by name, then recreate
+
+    Safe to run on any existing DB regardless of prior index state.
     """
     name = kwargs.get("name")
     if not name:
-        # Auto-generate name the same way MongoDB does
         if isinstance(keys, str):
             name = f"{keys}_1"
         else:
             name = "_".join(f"{k}_{v}" for k, v in keys)
         kwargs["name"] = name
+
     try:
         await collection.create_index(keys, **kwargs)
     except Exception as e:
-        if "IndexKeySpecsConflict" in str(e) or "existing index" in str(e):
-            # Drop the conflicting index and recreate
+        err = str(e)
+        if "IndexOptionsConflict" in err or "already exists with a different name" in err:
+            # Drop every index on this collection that matches these keys
+            # then recreate with our explicit name
+            try:
+                existing = await collection.index_information()
+                # Normalise keys to compare
+                if isinstance(keys, str):
+                    target_key = [(keys, 1)]
+                else:
+                    target_key = list(keys)
+                for idx_name, idx_info in existing.items():
+                    if idx_name == "_id_":
+                        continue
+                    if idx_info.get("key") == target_key:
+                        await collection.drop_index(idx_name)
+            except Exception:
+                pass
+            await collection.create_index(keys, **kwargs)
+        elif "IndexKeySpecsConflict" in err or "existing index" in err:
+            # Drop by name and recreate
             try:
                 await collection.drop_index(name)
             except Exception:
