@@ -11,6 +11,7 @@ import {
   Wallet, Users, LineChart
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import StagingBanner from "@/components/StagingBanner";
 import { Badge } from "@/components/ui/badge";
 
 const NAV = [
@@ -158,6 +159,7 @@ export default function Layout() {
           </div>
         </header>
 
+        <StagingBanner />
         <div className="flex-1 px-4 py-6 pb-24 md:p-8 max-w-[1400px] w-full mx-auto">
           <Outlet />
         </div>

@@ -25,6 +25,9 @@ CORS_ORIGINS = os.environ.get("CORS_ORIGINS", "*").split(",")
 
 IST = pytz.timezone("Asia/Kolkata")
 
+ENVIRONMENT    = os.environ.get("ENVIRONMENT", "production").lower()
+IS_STAGING     = ENVIRONMENT == "staging"
+
 ADMIN_EMAIL    = os.environ.get("ADMIN_EMAIL",    "admin@spdhaba.com")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "Admin@123")
 STAFF_EMAIL    = os.environ.get("STAFF_EMAIL",    "lokesh@spdhaba.com")
