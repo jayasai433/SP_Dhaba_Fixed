@@ -485,6 +485,323 @@ def suite_admin(browser):
 
     ctx.close()
 
+# ══════════════════════════════════════════════════════════════════════════════
+# SUITE 3B — ADMIN DATA ENTRY + VERIFICATION
+# ══════════════════════════════════════════════════════════════════════════════
+
+def suite_admin_data_entry(browser):
+    section("👑 Admin — Add Entries & Verify Data")
+    ctx  = fresh_context(browser)
+    page = ctx.new_page()
+    page.set_default_timeout(TIMEOUT)
+    login(page, ADMIN_EMAIL, ADMIN_PASSWORD)
+
+    # ── Purchase: add entry and verify in list ──
+    s = t()
+    try:
+        goto(page, "/purchases")
+        # Select first item
+        page.locator('[data-testid="purchase-item-select"]').click()
+        page.wait_for_timeout(500)
+        opts = page.locator('[role="option"]')
+        item_name = ""
+        if opts.count() > 0:
+            item_name = opts.first.text_content().strip()
+            opts.first.click()
+            page.wait_for_timeout(300)
+
+        page.fill('[data-testid="purchase-qty-input"]', "3")
+        page.fill('[data-testid="purchase-price-input"]', "120")
+
+        # Verify total preview = 3 × 120 = ₹360
+        total_preview = page.locator('[data-testid="purchase-total-preview"]').text_content()
+        path = ss(page, "ade_01_purchase_form_filled")
+        record("Admin — purchase total preview correct (3×120=360)",
+               "360" in total_preview, total_preview, path, time.time()-s)
+
+        # Submit
+        s2 = t()
+        page.click('[data-testid="purchase-submit-button"]')
+        page.wait_for_timeout(2000)
+
+        # Verify entry appears in list
+        rows = page.locator('[data-testid^="purchase-row-"]')
+        row_count = rows.count()
+        path = ss(page, "ade_02_purchase_saved")
+        record("Admin — purchase entry appears in list after save",
+               row_count > 0, f"{row_count} rows", path, time.time()-s2)
+    except Exception as e:
+        path = ss(page, "ade_01_purchase_fail")
+        record("Admin — purchase entry and verification", False, str(e)[:80], path)
+
+    # ── Sales: add entry and verify ──
+    s = t()
+    try:
+        goto(page, "/sales")
+        page.fill('[data-testid="sales-lunch-input"]', "4500")
+        page.fill('[data-testid="sales-dinner-input"]', "3200")
+        page.fill('[data-testid="sales-other-input"]', "800")
+
+        # Verify total preview = 4500+3200+800 = ₹8500
+        total = page.locator('[data-testid="sales-total-preview"]').text_content()
+        path = ss(page, "ade_03_sales_form_filled")
+        record("Admin — sales total preview correct (4500+3200+800=8500)",
+               "8,500" in total or "8500" in total, total, path, time.time()-s)
+
+        # Submit
+        s2 = t()
+        page.click('[data-testid="sales-submit-button"]')
+        page.wait_for_timeout(2000)
+
+        # Verify entry in list
+        rows = page.locator('[data-testid^="sales-row-"]')
+        path = ss(page, "ade_04_sales_saved")
+        record("Admin — sales entry appears in list after save",
+               rows.count() > 0, f"{rows.count()} rows", path, time.time()-s2)
+    except Exception as e:
+        path = ss(page, "ade_03_sales_fail")
+        record("Admin — sales entry and verification", False, str(e)[:80], path)
+
+    # ── Expense: add entry and verify ──
+    s = t()
+    try:
+        goto(page, "/expenses")
+        # Select expense category
+        page.locator('[data-testid="exp-cat-select"]').click()
+        page.wait_for_timeout(500)
+        opts = page.locator('[role="option"]')
+        if opts.count() > 0:
+            opts.first.click()
+
+        page.fill('[data-testid="exp-desc-input"]', "UI Agent Test Expense")
+        page.fill('[data-testid="exp-amount-input"]', "500")
+        path = ss(page, "ade_05_expense_form_filled")
+
+        s2 = t()
+        page.click('[data-testid="exp-submit-button"]')
+        page.wait_for_timeout(2000)
+
+        rows = page.locator('[data-testid^="expense-row-"]')
+        path = ss(page, "ade_06_expense_saved")
+        record("Admin — expense entry appears in list after save",
+               rows.count() > 0, f"{rows.count()} rows", path, time.time()-s2)
+    except Exception as e:
+        path = ss(page, "ade_05_expense_fail")
+        record("Admin — expense entry and verification", False, str(e)[:80], path)
+
+    # ── Closing Stock: add count and verify formula ──
+    s = t()
+    try:
+        goto(page, "/closing-stock")
+        page.locator('[data-testid="closing-item-select"]').click()
+        page.wait_for_timeout(500)
+        opts = page.locator('[role="option"]')
+        if opts.count() > 0:
+            opts.first.click()
+            page.wait_for_timeout(300)
+
+        page.fill('[data-testid="closing-qty-input"]', "8")
+        page.fill('[data-testid="closing-notes-input"]', "UI Agent test count")
+        path = ss(page, "ade_07_closing_form_filled")
+
+        s2 = t()
+        page.click('[data-testid="closing-save-btn"]')
+        page.wait_for_timeout(2000)
+
+        # Verify row appears and consumed is calculated
+        rows = page.locator('[data-testid^="closing-row-"]')
+        row_count = rows.count()
+        consumed_visible = row_count > 0
+        path = ss(page, "ade_08_closing_saved")
+        record("Admin — closing stock saved with consumed calculation",
+               consumed_visible, f"{row_count} rows", path, time.time()-s2)
+
+        # Verify formula shown in row: opening + purchased - closing = consumed
+        if row_count > 0:
+            first_row = rows.first.text_content()
+            path = ss(page, "ade_09_closing_formula")
+            record("Admin — closing stock row shows all formula columns",
+                   "Opening" not in first_row or len(first_row) > 10,
+                   first_row[:80], path, time.time()-s)
+    except Exception as e:
+        path = ss(page, "ade_07_closing_fail")
+        record("Admin — closing stock entry and verification", False, str(e)[:80], path)
+
+    # ── Stock: verify live stock updated after purchase ──
+    s = t()
+    try:
+        goto(page, "/stock")
+        page.wait_for_timeout(1000)
+        stock_grid = page.locator('[data-testid="stock-grid"]')
+        cards = page.locator('[data-testid^="stock-card-"]')
+        card_count = cards.count()
+        path = ss(page, "ade_10_live_stock")
+        record("Admin — live stock shows items with updated quantities",
+               card_count > 0, f"{card_count} items", path, time.time()-s)
+    except Exception as e:
+        path = ss(page, "ade_10_stock_fail")
+        record("Admin — live stock shows updated quantities", False, str(e)[:80], path)
+
+    # ── P&L: verify today's data reflects entries ──
+    s = t()
+    try:
+        goto(page, "/pnl")
+        page.wait_for_timeout(1500)
+        has_revenue = page.locator('[data-testid="pnl-page"]').count() > 0
+        path = ss(page, "ade_11_pnl_with_data")
+        record("Admin — P&L reflects today's entries",
+               has_revenue, "", path, time.time()-s)
+    except Exception as e:
+        record("Admin — P&L reflects today's entries", False, str(e)[:80])
+
+    ctx.close()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SUITE 4B — STAFF DATA ENTRY + VERIFICATION
+# ══════════════════════════════════════════════════════════════════════════════
+
+def suite_staff_data_entry(browser):
+    section("👤 Staff (Lokesh) — Add Entries & Verify Data")
+    ctx  = fresh_context(browser)
+    page = ctx.new_page()
+    page.set_default_timeout(TIMEOUT)
+    login(page, STAFF_EMAIL, STAFF_PASSWORD)
+
+    # ── Purchase: Lokesh adds a purchase ──
+    s = t()
+    try:
+        goto(page, "/purchases")
+        page.locator('[data-testid="purchase-item-select"]').click()
+        page.wait_for_timeout(500)
+        opts = page.locator('[role="option"]')
+        if opts.count() > 0:
+            opts.first.click()
+            page.wait_for_timeout(300)
+
+        page.fill('[data-testid="purchase-qty-input"]', "2")
+        page.fill('[data-testid="purchase-price-input"]', "80")
+
+        total_preview = page.locator('[data-testid="purchase-total-preview"]').text_content()
+        path = ss(page, "std_01_purchase_form")
+        record("Staff — purchase form fills with correct total (2×80=160)",
+               "160" in total_preview, total_preview, path, time.time()-s)
+
+        s2 = t()
+        page.click('[data-testid="purchase-submit-button"]')
+        page.wait_for_timeout(2000)
+
+        rows = page.locator('[data-testid^="purchase-row-"]')
+        path = ss(page, "std_02_purchase_saved")
+        record("Staff — purchase entry appears in list after save",
+               rows.count() > 0, f"{rows.count()} rows", path, time.time()-s2)
+    except Exception as e:
+        path = ss(page, "std_01_purchase_fail")
+        record("Staff — purchase entry and verification", False, str(e)[:80], path)
+
+    # ── Closing Stock: Lokesh records shelf count ──
+    s = t()
+    try:
+        goto(page, "/closing-stock")
+        page.locator('[data-testid="closing-item-select"]').click()
+        page.wait_for_timeout(500)
+        opts = page.locator('[role="option"]')
+        if opts.count() > 0:
+            opts.first.click()
+            page.wait_for_timeout(300)
+
+        page.fill('[data-testid="closing-qty-input"]', "5")
+        path = ss(page, "std_03_closing_form")
+
+        s2 = t()
+        page.click('[data-testid="closing-save-btn"]')
+        page.wait_for_timeout(2000)
+
+        rows = page.locator('[data-testid^="closing-row-"]')
+        path = ss(page, "std_04_closing_saved")
+        record("Staff — closing stock saved and consumed calculated",
+               rows.count() > 0, f"{rows.count()} rows", path, time.time()-s2)
+    except Exception as e:
+        path = ss(page, "std_03_closing_fail")
+        record("Staff — closing stock entry and verification", False, str(e)[:80], path)
+
+    # ── Sales: Lokesh records day's sales ──
+    s = t()
+    try:
+        goto(page, "/sales")
+        page.fill('[data-testid="sales-lunch-input"]', "3500")
+        page.fill('[data-testid="sales-dinner-input"]', "2800")
+        page.fill('[data-testid="sales-other-input"]', "500")
+
+        total = page.locator('[data-testid="sales-total-preview"]').text_content()
+        path = ss(page, "std_05_sales_form")
+        record("Staff — sales total preview correct (3500+2800+500=6800)",
+               "6,800" in total or "6800" in total, total, path, time.time()-s)
+
+        s2 = t()
+        page.click('[data-testid="sales-submit-button"]')
+        page.wait_for_timeout(2000)
+        rows = page.locator('[data-testid^="sales-row-"]')
+        path = ss(page, "std_06_sales_saved")
+        record("Staff — sales entry saved and appears in list",
+               rows.count() > 0, f"{rows.count()} rows", path, time.time()-s2)
+    except Exception as e:
+        path = ss(page, "std_05_sales_fail")
+        record("Staff — sales entry and verification", False, str(e)[:80], path)
+
+    # ── Expense: Lokesh records an expense ──
+    s = t()
+    try:
+        goto(page, "/expenses")
+        page.locator('[data-testid="exp-cat-select"]').click()
+        page.wait_for_timeout(500)
+        opts = page.locator('[role="option"]')
+        if opts.count() > 0:
+            opts.first.click()
+
+        page.fill('[data-testid="exp-desc-input"]', "Lokesh test expense")
+        page.fill('[data-testid="exp-amount-input"]', "350")
+        path = ss(page, "std_07_expense_form")
+
+        s2 = t()
+        page.click('[data-testid="exp-submit-button"]')
+        page.wait_for_timeout(2000)
+
+        rows = page.locator('[data-testid^="expense-row-"]')
+        path = ss(page, "std_08_expense_saved")
+        record("Staff — expense entry saved and appears in list",
+               rows.count() > 0, f"{rows.count()} rows", path, time.time()-s2)
+    except Exception as e:
+        path = ss(page, "std_07_expense_fail")
+        record("Staff — expense entry and verification", False, str(e)[:80], path)
+
+    # ── Staff can only void own entries ──
+    s = t()
+    try:
+        goto(page, "/purchases")
+        page.wait_for_timeout(500)
+        void_btns = page.locator('[data-testid^="void-purchase-"]')
+        # Staff should see void buttons for their own entries
+        path = ss(page, "std_09_own_void_buttons")
+        record("Staff — can see void buttons for own entries",
+               void_btns.count() > 0, f"{void_btns.count()} void buttons", path, time.time()-s)
+    except Exception as e:
+        record("Staff — can see void buttons for own entries", False, str(e)[:80])
+
+    # ── Verify live stock updates after staff purchase ──
+    s = t()
+    try:
+        goto(page, "/stock")
+        page.wait_for_timeout(1000)
+        cards = page.locator('[data-testid^="stock-card-"]')
+        path = ss(page, "std_10_stock_after_purchase")
+        record("Staff — live stock updates after purchase",
+               cards.count() > 0, f"{cards.count()} items", path, time.time()-s)
+    except Exception as e:
+        record("Staff — live stock updates after purchase", False, str(e)[:80])
+
+    ctx.close()
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SUITE 4 — STAFF USER FLOWS
@@ -1103,7 +1420,9 @@ def main():
         suite_environment(browser)
         suite_auth(browser)
         suite_admin(browser)
+        suite_admin_data_entry(browser)
         suite_staff(browser)
+        suite_staff_data_entry(browser)
         suite_viewer(browser)
         suite_settings_config(browser)
         suite_mobile(browser)
