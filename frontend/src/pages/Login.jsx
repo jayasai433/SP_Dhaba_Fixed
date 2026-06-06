@@ -63,6 +63,8 @@ export default function Login() {
   };
 
   return (
+    <>
+    <StagingBanner />
     <div className="min-h-screen w-full flex flex-col md:flex-row" data-testid="login-page">
       {/* Visual side */}
       <div className="hidden md:block flex-1 relative">
