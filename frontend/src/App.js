@@ -1,7 +1,8 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { useEffect } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
-import { BusinessProfileProvider } from "@/contexts/BusinessProfileContext";
+import { BusinessProfileProvider, useBusinessProfile } from "@/contexts/BusinessProfileContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import Layout from "@/components/Layout";
@@ -11,7 +12,6 @@ import Dashboard from "@/pages/Dashboard";
 import LiveStock from "@/pages/LiveStock";
 import Alerts from "@/pages/Alerts";
 import Purchases from "@/pages/Purchases";
-import DailyUsage from "@/pages/DailyUsage";
 import Sales from "@/pages/Sales";
 import Items from "@/pages/Items";
 import Settings from "@/pages/Settings";
@@ -22,6 +22,21 @@ import Expenses from "@/pages/Expenses";
 import Salaries from "@/pages/Salaries";
 import PnL from "@/pages/PnL";
 import "@/App.css";
+
+/**
+ * DynamicTitle — updates browser tab title from business profile.
+ * Replaces hardcoded "SP Royal Punjabi Dhaba" in index.html.
+ * Falls back gracefully if profile not yet loaded.
+ */
+function DynamicTitle() {
+  const { profile } = useBusinessProfile();
+  useEffect(() => {
+    if (profile?.name) {
+      document.title = `${profile.name} — Operations Manager`;
+    }
+  }, [profile?.name]);
+  return null;
+}
 
 function RootRedirect() {
   const { user, loading } = useAuth();
@@ -37,6 +52,7 @@ export default function App() {
     <ErrorBoundary>
       <AuthProvider>
         <BusinessProfileProvider>
+          <DynamicTitle />
           <BrowserRouter>
             <Toaster richColors position="top-right" />
           <Routes>
@@ -53,9 +69,7 @@ export default function App() {
             <Route path="/purchases" element={
               <ProtectedRoute roles={["admin", "staff"]}><ErrorBoundary><Purchases /></ErrorBoundary></ProtectedRoute>
             } />
-            <Route path="/usage" element={
-              <ProtectedRoute roles={["admin", "staff"]}><ErrorBoundary><DailyUsage /></ErrorBoundary></ProtectedRoute>
-            } />
+            <Route path="/usage" element={<Navigate to="/closing-stock" replace />} />
             <Route path="/sales" element={
               <ProtectedRoute roles={["admin", "staff"]}><ErrorBoundary><Sales /></ErrorBoundary></ProtectedRoute>
             } />

@@ -5,37 +5,102 @@ from core.config import IST
 
 
 async def compute_stock() -> list:
-    """Compute current stock = purchases - usage, per item."""
+    """
+    Compute current stock per item using the best available source:
+
+    Priority 1 — Closing Stock (physical count):
+      If a closing_stock record exists for today, use its closing_qty as
+      the definitive qty_left. This is the most accurate — Lokesh physically
+      counted what is on the shelf.
+
+    Priority 2 — Formula (purchases - consumed from closing stock history):
+      If no today closing stock, walk back through closing_stock records
+      to find the latest known physical count, then add today's purchases
+      and subtract today's consumed (from closing stock computed values).
+
+    Priority 3 — Legacy fallback (purchases - manual usage):
+      If no closing stock records exist at all (e.g., first day of use),
+      fall back to purchases - daily_usage. This ensures backward compat.
+
+    This approach means:
+      - Once Lokesh starts using Closing Stock, manual usage is ignored
+      - The transition is seamless — no data migration needed
+      - Old daily_usage data is preserved (not deleted)
+    """
     items = await db.items.find({}, {"_id": 0}).to_list(2000)
     if not items:
         return []
 
-    # Aggregation: sum purchases per item (excluding voided)
-    purchase_agg = db.purchases.aggregate([
+    today = datetime.now(IST).strftime("%Y-%m-%d")
+
+    # Run all aggregations concurrently
+    purchase_agg_cursor  = db.purchases.aggregate([
         {"$match": {"is_void": {"$ne": True}}},
         {"$group": {"_id": "$item_id", "total": {"$sum": "$quantity"}}}
     ])
-    usage_agg = db.daily_usage.aggregate([
+    # Latest closing stock record per item (most recent date)
+    closing_agg_cursor = db.closing_stock.aggregate([
+        {"$sort": {"date": -1}},
+        {"$group": {
+            "_id": "$item_id",
+            "closing_qty":     {"$first": "$closing_qty"},
+            "date":            {"$first": "$date"},
+            "purchased_today": {"$first": "$purchased_today"},
+        }}
+    ])
+    # Today's purchases per item (for adding to latest closing)
+    today_purchases_cursor = db.purchases.aggregate([
+        {"$match": {"is_void": {"$ne": True}, "date": today}},
+        {"$group": {"_id": "$item_id", "total": {"$sum": "$quantity"}}}
+    ])
+    # Legacy: manual usage (fallback only)
+    usage_agg_cursor = db.daily_usage.aggregate([
         {"$match": {"is_void": {"$ne": True}}},
         {"$group": {"_id": "$item_id", "total": {"$sum": "$quantity_used"}}}
     ])
 
-    purchased, used = {}, {}
-    async for doc in purchase_agg:
+    purchased, latest_closing, today_purchased, used = {}, {}, {}, {}
+
+    async for doc in purchase_agg_cursor:
         purchased[doc["_id"]] = doc["total"]
-    async for doc in usage_agg:
+    async for doc in closing_agg_cursor:
+        latest_closing[doc["_id"]] = doc
+    async for doc in today_purchases_cursor:
+        today_purchased[doc["_id"]] = doc["total"]
+    async for doc in usage_agg_cursor:
         used[doc["_id"]] = doc["total"]
 
     stock = []
     for item in items:
-        iid   = item["id"]
+        iid     = item["id"]
         qty_in  = purchased.get(iid, 0)
-        qty_out = used.get(iid, 0)
-        qty_left = round(qty_in - qty_out, 3)
-        reorder  = item.get("reorder_level", 0)
-        status   = "out" if qty_left <= 0 else ("low" if qty_left <= reorder else "in")
-        stock.append({**item, "qty_purchased": qty_in, "qty_used": qty_out,
-                      "qty_left": qty_left, "status": status})
+
+        if iid in latest_closing:
+            cs = latest_closing[iid]
+            if cs["date"] == today:
+                # Best case: today's physical count IS the current stock
+                qty_left = round(cs["closing_qty"], 3)
+                qty_out  = round(qty_in - qty_left, 3)
+            else:
+                # Use latest closing + today's new purchases - today's consumed
+                # (today's consumed not yet recorded → assume 0 until end-of-day count)
+                extra_today = today_purchased.get(iid, 0)
+                qty_left    = round(cs["closing_qty"] + extra_today, 3)
+                qty_out     = round(qty_in - qty_left, 3)
+        else:
+            # Legacy fallback: purchases - manual usage
+            qty_out  = used.get(iid, 0)
+            qty_left = round(qty_in - qty_out, 3)
+
+        reorder = item.get("reorder_level", 0)
+        status  = "out" if qty_left <= 0 else ("low" if qty_left <= reorder else "in")
+        stock.append({
+            **item,
+            "qty_purchased": qty_in,
+            "qty_used":      qty_out,
+            "qty_left":      max(0, qty_left),
+            "status":        status,
+        })
     return stock
 
 

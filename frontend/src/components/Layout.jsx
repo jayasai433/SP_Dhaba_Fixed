@@ -6,7 +6,7 @@ import { WifiOff } from "lucide-react";
 import api from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
-  LayoutDashboard, Package, ShoppingCart, ChefHat, IndianRupee,
+  LayoutDashboard, Package, ShoppingCart, ClipboardCheck, IndianRupee,
   Boxes, BellRing, Settings, LogOut, Tv, Menu, X,
   Wallet, Users, LineChart
 } from "lucide-react";
@@ -18,7 +18,7 @@ const NAV = [
   { to: "/stock", label: "Live Stock", icon: Boxes, roles: ["admin", "staff", "viewer"] },
   { to: "/alerts", label: "Alerts", icon: BellRing, roles: ["admin", "staff", "viewer"], badge: true },
   { to: "/purchases", label: "Purchases", icon: ShoppingCart, roles: ["admin", "staff"] },
-  { to: "/usage", label: "Daily Usage", icon: ChefHat, roles: ["admin", "staff"] },
+  { to: "/closing-stock", label: "Closing Stock", icon: ClipboardCheck, roles: ["admin", "staff"] },
   { to: "/sales", label: "Sales", icon: IndianRupee, roles: ["admin", "staff"] },
   { to: "/expenses", label: "Expenses", icon: Wallet, roles: ["admin", "staff"] },
   { to: "/salaries", label: "Salaries", icon: Users, roles: ["admin"] },
@@ -30,7 +30,7 @@ const NAV = [
 
 const MOBILE_NAV_BY_ROLE = {
   admin: ["/dashboard", "/stock", "/purchases", "/sales", "/closing-stock"],
-  staff: ["/stock", "/purchases", "/usage", "/sales", "/expenses", "/closing-stock", "/display"],
+  staff: ["/stock", "/purchases", "/closing-stock", "/sales", "/expenses", "/display"],
   viewer: ["/dashboard", "/stock", "/alerts", "/pnl", "/display"],
 };
 
