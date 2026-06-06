@@ -38,6 +38,9 @@ HEADLESS        = os.environ.get("HEADLESS", "true").lower() == "true"
 TIMEOUT         = 30000
 TODAY           = date.today().isoformat()
 
+# Session store — login once per role, reuse token across all scenarios
+SESSIONS = {}  # role → JWT token string
+
 SS_DIR = Path(__file__).parent / "screenshots"
 SS_DIR.mkdir(exist_ok=True)
 
