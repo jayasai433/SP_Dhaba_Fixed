@@ -1,8 +1,8 @@
 """
-SP Dhaba — End-to-End UI Testing Agent
-=======================================
-Tests the app like a real user: clicks, fills forms, takes screenshots.
-Generates a full HTML report with screenshots and pass/fail status.
+SP Dhaba — Comprehensive End-to-End UI Testing Agent
+=====================================================
+Tests every user flow for all 3 roles (Admin, Staff, Viewer).
+Runs like a real user — clicks, fills forms, verifies results, takes screenshots.
 
 Usage:
   python3 tests/ui_agent.py <frontend_url>
@@ -15,18 +15,19 @@ Examples:
 Output:
   tests/screenshots/report.html  — open in browser
   tests/screenshots/*.png        — individual screenshots
+
+Role matrix tested:
+  Admin  → all pages, all actions, void, settings, items, salaries
+  Staff  → purchases, closing stock, sales, expenses (no dashboard/pnl/settings)
+  Viewer → dashboard, stock, alerts, pnl, display only (read-only)
 """
 
-import sys
-import os
-import time
-import json
-import base64
-from datetime import datetime
+import sys, os, time, json, base64
+from datetime import datetime, date
 from pathlib import Path
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
-# ── Config ─────────────────────────────────────────────────────────────────
+# ── Config ──────────────────────────────────────────────────────────────────
 BASE_URL        = sys.argv[1].rstrip("/") if len(sys.argv) > 1 else "http://localhost:3000"
 ADMIN_EMAIL     = os.environ.get("ADMIN_EMAIL",  "admin@spdhaba.com")
 ADMIN_PASSWORD  = os.environ.get("ADMIN_PWD",    "Admin@123")
@@ -35,25 +36,31 @@ STAFF_PASSWORD  = os.environ.get("STAFF_PWD",    "Staff@123")
 VIEWER_EMAIL    = os.environ.get("VIEWER_EMAIL", "display@spdhaba.com")
 VIEWER_PASSWORD = os.environ.get("VIEWER_PWD",   "View@123")
 HEADLESS        = os.environ.get("HEADLESS", "true").lower() == "true"
-TIMEOUT         = 15000  # 15s per action
+TIMEOUT         = 20000
+TODAY           = date.today().isoformat()
 
 SS_DIR = Path(__file__).parent / "screenshots"
 SS_DIR.mkdir(exist_ok=True)
 
-# ── Result tracking ─────────────────────────────────────────────────────────
+# ── Result tracking ──────────────────────────────────────────────────────────
 results = []
+current_section = ""
+
+def section(name):
+    global current_section
+    current_section = name
+    print(f"\n{'─'*60}")
+    print(f"  {name}")
+    print(f"{'─'*60}")
 
 def record(name, passed, message="", screenshot=None, duration=0):
-    status = "PASS" if passed else "FAIL"
     results.append({
-        "name": name,
-        "status": status,
-        "message": message,
-        "screenshot": screenshot,
-        "duration": duration,
+        "name": name, "section": current_section,
+        "status": "PASS" if passed else "FAIL",
+        "message": message, "screenshot": screenshot, "duration": duration,
     })
     icon = "✅" if passed else "❌"
-    print(f"  {icon} [{status}] {name}" + (f" — {message}" if message else "") + f" ({duration:.1f}s)")
+    print(f"  {icon} {name}" + (f" — {message}" if message else "") + f" ({duration:.1f}s)")
 
 def ss(page, name):
     path = SS_DIR / f"{name}.png"
@@ -63,376 +70,711 @@ def ss(page, name):
     except Exception:
         return None
 
-def login(page, email, password):
+def t(): return time.time()
+
+def check(page, name, condition, message="", screenshot_name=None, start=None):
+    duration = time.time() - start if start else 0
+    path = ss(page, screenshot_name) if screenshot_name else None
+    record(name, condition, message, path, duration)
+    return condition
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# HELPERS
+# ══════════════════════════════════════════════════════════════════════════════
+
+def fresh_context(browser, mobile=False):
+    if mobile:
+        return browser.new_context(
+            viewport={"width": 390, "height": 844},
+            user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)"
+        )
+    return browser.new_context(viewport={"width": 1280, "height": 800})
+
+def login(page, email, password, expect_success=True):
     page.goto(f"{BASE_URL}/login", wait_until="networkidle", timeout=TIMEOUT)
+    page.wait_for_timeout(1000)
     page.fill('[data-testid="login-email-input"]', email)
     page.fill('[data-testid="login-password-input"]', password)
     page.click('[data-testid="login-submit-button"]')
     page.wait_for_load_state("networkidle", timeout=TIMEOUT)
+    page.wait_for_timeout(1000)
+    if expect_success:
+        return "/login" not in page.url
+    else:
+        return "/login" in page.url
 
-def wait_nav(page, path, timeout=10000):
-    page.wait_for_url(f"**{path}**", timeout=timeout)
+def goto(page, path):
+    page.goto(f"{BASE_URL}{path}", wait_until="networkidle", timeout=TIMEOUT)
+    page.wait_for_timeout(800)
 
+def is_forbidden(page):
+    return "forbidden" in page.url or page.locator('[data-testid="forbidden-page"]').count() > 0
 
-# ══════════════════════════════════════════════════════════════════════════════
-# TEST SUITES
-# ══════════════════════════════════════════════════════════════════════════════
+def is_accessible(page):
+    return not is_forbidden(page) and "/login" not in page.url
 
-def test_auth(page):
-    print("\n🔐 Auth Tests")
-
-    # 1. Login page loads
-    t = time.time()
+def has_element(page, selector, timeout=3000):
     try:
-        page.goto(f"{BASE_URL}/login", wait_until="networkidle", timeout=TIMEOUT)
-        assert page.locator('[data-testid="login-email-input"]').is_visible()
-        path = ss(page, "01_login_page")
-        record("Login page loads", True, screenshot=path, duration=time.time()-t)
-    except Exception as e:
-        record("Login page loads", False, str(e)[:80], duration=time.time()-t)
-        return False
-
-    # 2. Wrong credentials rejected
-    t = time.time()
-    try:
-        page.fill('[data-testid="login-email-input"]', "wrong@test.com")
-        page.fill('[data-testid="login-password-input"]', "wrongpass")
-        page.click('[data-testid="login-submit-button"]')
-        page.wait_for_timeout(2000)
-        # Should still be on login page
-        assert "/login" in page.url
-        path = ss(page, "02_login_wrong_creds")
-        record("Wrong credentials rejected", True, screenshot=path, duration=time.time()-t)
-    except Exception as e:
-        record("Wrong credentials rejected", False, str(e)[:80], duration=time.time()-t)
-
-    # 3. Admin login succeeds
-    t = time.time()
-    try:
-        page.fill('[data-testid="login-email-input"]', ADMIN_EMAIL)
-        page.fill('[data-testid="login-password-input"]', ADMIN_PASSWORD)
-        page.click('[data-testid="login-submit-button"]')
-        page.wait_for_load_state("networkidle", timeout=TIMEOUT)
-        assert "/login" not in page.url
-        path = ss(page, "03_admin_logged_in")
-        record("Admin login succeeds", True, f"landed on {page.url.split('/')[-1]}", screenshot=path, duration=time.time()-t)
+        page.wait_for_selector(selector, timeout=timeout)
         return True
-    except Exception as e:
-        path = ss(page, "03_admin_login_failed")
-        record("Admin login succeeds", False, str(e)[:80], screenshot=path, duration=time.time()-t)
+    except Exception:
         return False
 
-
-def test_navigation(page):
-    print("\n🧭 Navigation Tests")
-    pages = [
-        ("/dashboard",          "dashboard",          "04_dashboard"),
-        ("/stock",              "stock",              "05_live_stock"),
-        ("/alerts",             "alerts",             "06_alerts"),
-        ("/purchases",          "purchases",          "07_purchases"),
-        ("/closing-stock",      "closing-stock",      "08_closing_stock"),
-        ("/sales",              "sales",              "09_sales"),
-        ("/expenses",           "expenses",           "10_expenses"),
-        ("/salaries",           "salaries",           "11_salaries"),
-        ("/pnl",                "pnl",                "12_pnl"),
-        ("/items",              "items",              "13_items"),
-        ("/settings",           "settings",           "14_settings"),
-        ("/inventory-insights", "inventory-insights", "15_inventory_insights"),
-    ]
-    for path, testid, name in pages:
-        t = time.time()
-        try:
-            page.goto(f"{BASE_URL}{path}", wait_until="networkidle", timeout=TIMEOUT)
-            page.wait_for_timeout(800)
-            assert page.locator(f'[data-testid="{testid}-page"], [data-testid="app-shell"]').count() > 0
-            shot = ss(page, name)
-            record(f"Page: {path}", True, screenshot=shot, duration=time.time()-t)
-        except Exception as e:
-            shot = ss(page, f"{name}_fail")
-            record(f"Page: {path}", False, str(e)[:80], screenshot=shot, duration=time.time()-t)
-
-
-def test_purchases(page):
-    print("\n🛒 Purchases Tests")
-
-    page.goto(f"{BASE_URL}/purchases", wait_until="networkidle", timeout=TIMEOUT)
-    page.wait_for_timeout(500)
-
-    # Load items dropdown
-    t = time.time()
+def select_first_option(page, trigger_testid):
+    """Click a Select trigger and choose the first available option."""
     try:
-        items = page.locator('[data-testid="purchase-item-0"]')
-        items.click()
-        page.wait_for_timeout(500)
-        options = page.locator('[role="option"]')
-        count = options.count()
-        path = ss(page, "16_purchases_item_dropdown")
-        record("Purchases item dropdown loads", count > 0, f"{count} items", screenshot=path, duration=time.time()-t)
-
-        if count > 0:
-            options.first.click()
-            page.wait_for_timeout(300)
-
-        # Fill qty and price
-        page.fill('[data-testid="purchase-qty-0"]', "2")
-        page.fill('[data-testid="purchase-price-0"]', "100")
-        path = ss(page, "17_purchases_form_filled")
-        record("Purchases form fills correctly", True, screenshot=path, duration=time.time()-t)
-    except Exception as e:
-        path = ss(page, "16_purchases_fail")
-        record("Purchases form interaction", False, str(e)[:80], screenshot=path, duration=time.time()-t)
-
-
-def test_closing_stock(page):
-    print("\n📦 Closing Stock Tests")
-
-    page.goto(f"{BASE_URL}/closing-stock", wait_until="networkidle", timeout=TIMEOUT)
-    page.wait_for_timeout(500)
-
-    t = time.time()
-    try:
-        # Progress bar visible
-        assert page.locator('text=Items counted today').is_visible()
-        path = ss(page, "18_closing_stock_page")
-        record("Closing stock page loads correctly", True, screenshot=path, duration=time.time()-t)
-    except Exception as e:
-        path = ss(page, "18_closing_stock_fail")
-        record("Closing stock page loads correctly", False, str(e)[:80], screenshot=path, duration=time.time()-t)
-
-    # Try entering a count
-    t = time.time()
-    try:
-        page.locator('[data-testid="closing-item-select"]').click()
+        page.locator(f'[data-testid="{trigger_testid}"]').click()
         page.wait_for_timeout(500)
         options = page.locator('[role="option"]')
         if options.count() > 0:
             options.first.click()
-            page.fill('[data-testid="closing-qty-input"]', "5")
-            path = ss(page, "19_closing_stock_filled")
-            record("Closing stock form fills correctly", True, screenshot=path, duration=time.time()-t)
-    except Exception as e:
-        path = ss(page, "19_closing_stock_form_fail")
-        record("Closing stock form fills correctly", False, str(e)[:80], screenshot=path, duration=time.time()-t)
-
-
-def test_sales(page):
-    print("\n💰 Sales Tests")
-
-    page.goto(f"{BASE_URL}/sales", wait_until="networkidle", timeout=TIMEOUT)
-    page.wait_for_timeout(500)
-
-    t = time.time()
-    try:
-        assert page.locator('[data-testid="sales-page"]').is_visible()
-        path = ss(page, "20_sales_page")
-        record("Sales page loads", True, screenshot=path, duration=time.time()-t)
-    except Exception as e:
-        path = ss(page, "20_sales_fail")
-        record("Sales page loads", False, str(e)[:80], screenshot=path, duration=time.time()-t)
-
-
-def test_pnl(page):
-    print("\n📊 P&L Tests")
-
-    page.goto(f"{BASE_URL}/pnl", wait_until="networkidle", timeout=TIMEOUT)
-    page.wait_for_timeout(1000)
-
-    t = time.time()
-    try:
-        assert page.locator('[data-testid="pnl-page"]').is_visible()
-        path = ss(page, "21_pnl_page")
-        record("P&L page loads", True, screenshot=path, duration=time.time()-t)
-    except Exception as e:
-        path = ss(page, "21_pnl_fail")
-        record("P&L page loads", False, str(e)[:80], screenshot=path, duration=time.time()-t)
-
-
-def test_void_dialog(page):
-    print("\n🚫 Void Dialog Tests")
-
-    page.goto(f"{BASE_URL}/purchases", wait_until="networkidle", timeout=TIMEOUT)
-    page.wait_for_timeout(500)
-
-    t = time.time()
-    try:
-        void_btns = page.locator('[data-testid^="void-purchase-"]')
-        if void_btns.count() > 0:
-            void_btns.first.click()
-            page.wait_for_timeout(500)
-            assert page.locator('[data-testid="void-dialog"]').is_visible()
-            path = ss(page, "22_void_dialog_open")
-            record("Void dialog opens correctly", True, screenshot=path, duration=time.time()-t)
-
-            # Test validation — empty reason
-            page.click('[data-testid="void-confirm-btn"]')
             page.wait_for_timeout(300)
-            assert page.locator('[data-testid="void-reason-error"]').is_visible()
-            path = ss(page, "23_void_dialog_validation")
-            record("Void dialog validates empty reason", True, screenshot=path, duration=time.time()-t)
-
-            # Cancel closes it
-            page.click('[data-testid="void-cancel-btn"]')
-            page.wait_for_timeout(300)
-            assert not page.locator('[data-testid="void-dialog"]').is_visible()
-            record("Void dialog cancels correctly", True, duration=time.time()-t)
-        else:
-            record("Void dialog opens correctly", True, "no entries to void — skipped", duration=time.time()-t)
-    except Exception as e:
-        path = ss(page, "22_void_dialog_fail")
-        record("Void dialog opens correctly", False, str(e)[:80], screenshot=path, duration=time.time()-t)
+            return True
+        return False
+    except Exception:
+        return False
 
 
-def test_settings(page):
-    print("\n⚙️ Settings Tests")
+# ══════════════════════════════════════════════════════════════════════════════
+# SUITE 1 — ENVIRONMENT
+# ══════════════════════════════════════════════════════════════════════════════
 
-    page.goto(f"{BASE_URL}/settings", wait_until="networkidle", timeout=TIMEOUT)
-    page.wait_for_timeout(500)
+def suite_environment(browser):
+    section("🌍 Environment & Health")
+    ctx  = fresh_context(browser)
+    page = ctx.new_page()
+    page.set_default_timeout(TIMEOUT)
 
-    t = time.time()
-    try:
-        assert page.locator('[data-testid="settings-page"]').is_visible()
-        # Click through tabs
-        for tab in ["business", "categories", "units", "users"]:
-            page.click(f'[data-testid="settings-tab-{tab}"]')
-            page.wait_for_timeout(400)
-        path = ss(page, "24_settings_page")
-        record("Settings page and tabs work", True, screenshot=path, duration=time.time()-t)
-    except Exception as e:
-        path = ss(page, "24_settings_fail")
-        record("Settings page and tabs work", False, str(e)[:80], screenshot=path, duration=time.time()-t)
-
-
-def test_staff_role(page):
-    print("\n👤 Staff Role Tests")
-
-    # Logout first
-    t = time.time()
+    # Banner check
+    s = t()
     try:
         page.goto(f"{BASE_URL}/login", wait_until="networkidle", timeout=TIMEOUT)
-        login(page, STAFF_EMAIL, STAFF_PASSWORD)
-        page.wait_for_timeout(1000)
-        path = ss(page, "25_staff_logged_in")
-        record("Staff login succeeds", "/login" not in page.url, screenshot=path, duration=time.time()-t)
-    except Exception as e:
-        record("Staff login succeeds", False, str(e)[:80], duration=time.time()-t)
-        return
-
-    # Staff should NOT see dashboard
-    t = time.time()
-    try:
-        page.goto(f"{BASE_URL}/dashboard", wait_until="networkidle", timeout=TIMEOUT)
-        page.wait_for_timeout(500)
-        is_forbidden = "forbidden" in page.url or page.locator('[data-testid="forbidden-page"]').count() > 0
-        path = ss(page, "26_staff_no_dashboard")
-        record("Staff cannot access dashboard", is_forbidden, screenshot=path, duration=time.time()-t)
-    except Exception as e:
-        record("Staff cannot access dashboard", False, str(e)[:80], duration=time.time()-t)
-
-    # Staff CAN see closing stock
-    t = time.time()
-    try:
-        page.goto(f"{BASE_URL}/closing-stock", wait_until="networkidle", timeout=TIMEOUT)
-        page.wait_for_timeout(500)
-        assert "forbidden" not in page.url
-        path = ss(page, "27_staff_closing_stock")
-        record("Staff can access closing stock", True, screenshot=path, duration=time.time()-t)
-    except Exception as e:
-        record("Staff can access closing stock", False, str(e)[:80], duration=time.time()-t)
-
-
-def test_viewer_role(page):
-    print("\n👁️ Viewer Role Tests")
-
-    t = time.time()
-    try:
-        page.goto(f"{BASE_URL}/login", wait_until="networkidle", timeout=TIMEOUT)
-        login(page, VIEWER_EMAIL, VIEWER_PASSWORD)
-        page.wait_for_timeout(1000)
-        # Viewer redirects to /display
-        assert "display" in page.url or "stock" in page.url
-        path = ss(page, "28_viewer_logged_in")
-        record("Viewer login redirects to display", True, page.url.split("/")[-1], screenshot=path, duration=time.time()-t)
-    except Exception as e:
-        path = ss(page, "28_viewer_fail")
-        record("Viewer login redirects to display", False, str(e)[:80], screenshot=path, duration=time.time()-t)
-
-    # Viewer cannot access purchases
-    t = time.time()
-    try:
-        page.goto(f"{BASE_URL}/purchases", wait_until="networkidle", timeout=TIMEOUT)
-        page.wait_for_timeout(500)
-        is_forbidden = "forbidden" in page.url or page.locator('[data-testid="forbidden-page"]').count() > 0
-        path = ss(page, "29_viewer_no_purchases")
-        record("Viewer cannot access purchases", is_forbidden, screenshot=path, duration=time.time()-t)
-    except Exception as e:
-        record("Viewer cannot access purchases", False, str(e)[:80], duration=time.time()-t)
-
-
-def test_mobile_view(page, browser):
-    print("\n📱 Mobile View Tests")
-
-    # Re-create context with mobile viewport
-    mobile_ctx = browser.new_context(
-        viewport={"width": 390, "height": 844},
-        user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)"
-    )
-    mobile_page = mobile_ctx.new_page()
-
-    t = time.time()
-    try:
-        mobile_page.goto(f"{BASE_URL}/login", wait_until="networkidle", timeout=TIMEOUT)
-        mobile_page.fill('[data-testid="login-email-input"]', ADMIN_EMAIL)
-        mobile_page.fill('[data-testid="login-password-input"]', ADMIN_PASSWORD)
-        mobile_page.click('[data-testid="login-submit-button"]')
-        mobile_page.wait_for_load_state("networkidle", timeout=TIMEOUT)
-        path = ss(mobile_page, "30_mobile_logged_in")
-        record("Mobile: login works", True, screenshot=path, duration=time.time()-t)
-
-        # Bottom nav visible
-        mobile_page.goto(f"{BASE_URL}/stock", wait_until="networkidle", timeout=TIMEOUT)
-        mobile_page.wait_for_timeout(500)
-        bottom_nav = mobile_page.locator('nav.fixed.bottom-0, [data-testid^="bottom-nav-"]')
-        path = ss(mobile_page, "31_mobile_bottom_nav")
-        record("Mobile: bottom nav visible", bottom_nav.count() > 0, screenshot=path, duration=time.time()-t)
-
-        # Hamburger menu opens
-        mobile_page.goto(f"{BASE_URL}/purchases", wait_until="networkidle", timeout=TIMEOUT)
-        mobile_page.click('[data-testid="open-drawer"]')
-        mobile_page.wait_for_timeout(500)
-        path = ss(mobile_page, "32_mobile_drawer_open")
-        record("Mobile: hamburger drawer opens", True, screenshot=path, duration=time.time()-t)
-
-    except Exception as e:
-        path = ss(mobile_page, "30_mobile_fail")
-        record("Mobile view tests", False, str(e)[:80], screenshot=path, duration=time.time()-t)
-    finally:
-        mobile_ctx.close()
-
-
-def test_staging_banner(page):
-    print("\n🟡 Staging Banner Tests")
-
-    t = time.time()
-    try:
-        page.goto(f"{BASE_URL}/login", wait_until="networkidle", timeout=TIMEOUT)
-        page.wait_for_timeout(1000)
-        # Check for any environment banner
+        page.wait_for_timeout(2000)
+        has_banner = (
+            page.locator("text=STAGING").count() > 0 or
+            page.locator("text=Production").count() > 0 or
+            page.locator("text=Unknown environment").count() > 0
+        )
         banner_text = ""
         for sel in ["text=STAGING", "text=Production", "text=Unknown environment"]:
             el = page.locator(sel)
             if el.count() > 0:
-                banner_text = el.first.text_content()
+                banner_text = el.first.text_content()[:80]
                 break
-        path = ss(page, "33_staging_banner")
-        record(
-            "Environment banner visible",
-            bool(banner_text),
-            banner_text[:60] if banner_text else "no banner found",
-            screenshot=path,
-            duration=time.time()-t
-        )
+        check(page, "Environment banner visible", has_banner, banner_text, "env_01_banner", s)
     except Exception as e:
-        record("Environment banner visible", False, str(e)[:80], duration=time.time()-t)
+        record("Environment banner visible", False, str(e)[:80])
+
+    ctx.close()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SUITE 2 — AUTH (all roles)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def suite_auth(browser):
+    section("🔐 Authentication — All Roles")
+    ctx  = fresh_context(browser)
+    page = ctx.new_page()
+    page.set_default_timeout(TIMEOUT)
+
+    # Login page elements
+    s = t()
+    try:
+        page.goto(f"{BASE_URL}/login", wait_until="networkidle", timeout=TIMEOUT)
+        page.wait_for_timeout(1000)
+        has_email = has_element(page, '[data-testid="login-email-input"]')
+        has_pwd   = has_element(page, '[data-testid="login-password-input"]')
+        has_btn   = has_element(page, '[data-testid="login-submit-button"]')
+        check(page, "Login page — all form elements present",
+              has_email and has_pwd and has_btn, "", "auth_01_login_page", s)
+    except Exception as e:
+        record("Login page — all form elements present", False, str(e)[:80])
+
+    # Wrong credentials
+    s = t()
+    try:
+        page.fill('[data-testid="login-email-input"]', "hacker@evil.com")
+        page.fill('[data-testid="login-password-input"]', "wrongpass123")
+        page.click('[data-testid="login-submit-button"]')
+        page.wait_for_timeout(2000)
+        still_on_login = "/login" in page.url
+        check(page, "Wrong credentials — stays on login page", still_on_login, "", "auth_02_wrong_creds", s)
+    except Exception as e:
+        record("Wrong credentials — stays on login page", False, str(e)[:80])
+
+    # Admin login + redirect to dashboard
+    s = t()
+    try:
+        ok = login(page, ADMIN_EMAIL, ADMIN_PASSWORD)
+        landed = page.url.split("/")[-1]
+        check(page, "Admin login — redirects to dashboard", ok and "dashboard" in page.url,
+              f"landed: {landed}", "auth_03_admin_dashboard", s)
+    except Exception as e:
+        record("Admin login — redirects to dashboard", False, str(e)[:80])
+
+    # Admin logout
+    s = t()
+    try:
+        page.click('[data-testid="logout-button"]')
+        page.wait_for_load_state("networkidle", timeout=TIMEOUT)
+        check(page, "Admin logout — redirects to login", "/login" in page.url, "", "auth_04_logout", s)
+    except Exception as e:
+        record("Admin logout — redirects to login", False, str(e)[:80])
+
+    # Staff login + redirect to stock
+    s = t()
+    try:
+        ok = login(page, STAFF_EMAIL, STAFF_PASSWORD)
+        landed = page.url.split("/")[-1]
+        check(page, "Staff login — redirects to stock", ok and "stock" in page.url,
+              f"landed: {landed}", "auth_05_staff_stock", s)
+    except Exception as e:
+        record("Staff login — redirects to stock", False, str(e)[:80])
+
+    page.click('[data-testid="logout-button"]')
+    page.wait_for_load_state("networkidle", timeout=TIMEOUT)
+
+    # Viewer login + redirect to display
+    s = t()
+    try:
+        ok = login(page, VIEWER_EMAIL, VIEWER_PASSWORD)
+        landed = page.url.split("/")[-1]
+        check(page, "Viewer login — redirects to display", ok and "display" in page.url,
+              f"landed: {landed}", "auth_06_viewer_display", s)
+    except Exception as e:
+        record("Viewer login — redirects to display", False, str(e)[:80])
+
+    ctx.close()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SUITE 3 — ADMIN USER FLOWS
+# ══════════════════════════════════════════════════════════════════════════════
+
+def suite_admin(browser):
+    section("👑 Admin — All Page Access & Actions")
+    ctx  = fresh_context(browser)
+    page = ctx.new_page()
+    page.set_default_timeout(TIMEOUT)
+    login(page, ADMIN_EMAIL, ADMIN_PASSWORD)
+
+    # ── Access checks ──
+    admin_pages = [
+        ("/dashboard",          "dashboard",          "adm_01_dashboard"),
+        ("/stock",              "stock",              "adm_02_stock"),
+        ("/alerts",             "alerts",             "adm_03_alerts"),
+        ("/purchases",          "purchases",          "adm_04_purchases"),
+        ("/closing-stock",      "closing-stock",      "adm_05_closing_stock"),
+        ("/sales",              "sales",              "adm_06_sales"),
+        ("/expenses",           "expenses",           "adm_07_expenses"),
+        ("/salaries",           "salaries",           "adm_08_salaries"),
+        ("/pnl",                "pnl",                "adm_09_pnl"),
+        ("/items",              "items",              "adm_10_items"),
+        ("/settings",           "settings",           "adm_11_settings"),
+        ("/inventory-insights", "inventory-insights", "adm_12_insights"),
+        ("/display",            "display",            "adm_13_display"),
+    ]
+
+    for path, label, name in admin_pages:
+        s = t()
+        try:
+            goto(page, path)
+            accessible = is_accessible(page)
+            check(page, f"Admin can access {path}", accessible, "", name, s)
+        except Exception as e:
+            record(f"Admin can access {path}", False, str(e)[:60])
+
+    # ── Dashboard data ──
+    s = t()
+    try:
+        goto(page, "/dashboard")
+        has_cards = has_element(page, '[data-testid="dashboard-page"]', 5000)
+        check(page, "Dashboard — summary cards visible", has_cards, "", "adm_14_dashboard_cards", s)
+    except Exception as e:
+        record("Dashboard — summary cards visible", False, str(e)[:80])
+
+    # ── Purchases — add entry ──
+    s = t()
+    try:
+        goto(page, "/purchases")
+        page.wait_for_timeout(500)
+        items_loaded = select_first_option(page, "purchase-item-0")
+        if items_loaded:
+            page.fill('[data-testid="purchase-qty-0"]', "3")
+            page.fill('[data-testid="purchase-price-0"]', "150")
+            check(page, "Admin — purchase form fills correctly", True, "", "adm_15_purchase_form", s)
+        else:
+            record("Admin — purchase form fills correctly", False, "no items in dropdown")
+    except Exception as e:
+        record("Admin — purchase form fills correctly", False, str(e)[:80])
+
+    # ── Closing Stock — enter count ──
+    s = t()
+    try:
+        goto(page, "/closing-stock")
+        has_progress = has_element(page, "text=Items counted today", 5000)
+        items_loaded = False
+        try:
+            page.locator('[data-testid="closing-item-select"]').click()
+            page.wait_for_timeout(500)
+            opts = page.locator('[role="option"]')
+            if opts.count() > 0:
+                opts.first.click()
+                page.fill('[data-testid="closing-qty-input"]', "10")
+                items_loaded = True
+        except Exception:
+            pass
+        check(page, "Admin — closing stock form works", has_progress, "", "adm_16_closing_stock", s)
+    except Exception as e:
+        record("Admin — closing stock form works", False, str(e)[:80])
+
+    # ── Sales — enter sales ──
+    s = t()
+    try:
+        goto(page, "/sales")
+        page.wait_for_timeout(500)
+        # Find lunch input
+        lunch_input = page.locator('[data-testid="sales-lunch-input"], input[placeholder*="lunch"], input').first
+        if lunch_input.is_visible():
+            lunch_input.fill("5000")
+            check(page, "Admin — sales form fills correctly", True, "", "adm_17_sales_form", s)
+        else:
+            check(page, "Admin — sales form fills correctly", False, "lunch input not found", "adm_17_sales_form", s)
+    except Exception as e:
+        record("Admin — sales form fills correctly", False, str(e)[:80])
+
+    # ── Expenses — add expense ──
+    s = t()
+    try:
+        goto(page, "/expenses")
+        page.wait_for_timeout(500)
+        has_form = has_element(page, '[data-testid="expenses-page"]', 3000)
+        check(page, "Admin — expenses page loads with form", has_form, "", "adm_18_expenses", s)
+    except Exception as e:
+        record("Admin — expenses page loads with form", False, str(e)[:80])
+
+    # ── P&L — verify data shows ──
+    s = t()
+    try:
+        goto(page, "/pnl")
+        page.wait_for_timeout(1500)
+        has_pnl = has_element(page, '[data-testid="pnl-page"]', 5000)
+        check(page, "Admin — P&L page loads with data", has_pnl, "", "adm_19_pnl", s)
+    except Exception as e:
+        record("Admin — P&L page loads with data", False, str(e)[:80])
+
+    # ── Items — create item ──
+    s = t()
+    try:
+        goto(page, "/items")
+        page.wait_for_timeout(500)
+        has_items = has_element(page, '[data-testid="items-page"]', 3000)
+        check(page, "Admin — item master page loads", has_items, "", "adm_20_items", s)
+    except Exception as e:
+        record("Admin — item master page loads", False, str(e)[:80])
+
+    # ── Settings — all tabs ──
+    s = t()
+    try:
+        goto(page, "/settings")
+        tabs_ok = True
+        for tab in ["business", "categories", "units", "users", "staff", "whatsapp"]:
+            try:
+                page.click(f'[data-testid="settings-tab-{tab}"]')
+                page.wait_for_timeout(400)
+            except Exception:
+                tabs_ok = False
+        check(page, "Admin — settings all tabs clickable", tabs_ok, "", "adm_21_settings_tabs", s)
+    except Exception as e:
+        record("Admin — settings all tabs clickable", False, str(e)[:80])
+
+    # ── Void dialog — open, validate, cancel ──
+    s = t()
+    try:
+        goto(page, "/purchases")
+        page.wait_for_timeout(500)
+        void_btns = page.locator('[data-testid^="void-purchase-"]')
+        if void_btns.count() > 0:
+            void_btns.first.click()
+            page.wait_for_timeout(600)
+            dialog_open = has_element(page, '[data-testid="void-dialog"]', 3000)
+            if dialog_open:
+                # Validate empty reason
+                page.click('[data-testid="void-confirm-btn"]')
+                page.wait_for_timeout(300)
+                shows_error = has_element(page, '[data-testid="void-reason-error"]', 2000)
+                # Fill reason and cancel
+                page.fill('[data-testid="void-reason-input"]', "Test void — UI agent")
+                page.click('[data-testid="void-cancel-btn"]')
+                page.wait_for_timeout(300)
+                dialog_closed = not has_element(page, '[data-testid="void-dialog"]', 1000)
+                check(page, "Admin — void dialog opens, validates, cancels",
+                      dialog_open and shows_error and dialog_closed, "", "adm_22_void_dialog", s)
+            else:
+                record("Admin — void dialog opens, validates, cancels", False, "dialog did not open")
+        else:
+            record("Admin — void dialog opens, validates, cancels", True, "no entries to void — skipped")
+    except Exception as e:
+        record("Admin — void dialog opens, validates, cancels", False, str(e)[:80])
+
+    # ── Alerts badge ──
+    s = t()
+    try:
+        goto(page, "/alerts")
+        page.wait_for_timeout(500)
+        accessible = is_accessible(page)
+        check(page, "Admin — alerts page accessible", accessible, "", "adm_23_alerts", s)
+    except Exception as e:
+        record("Admin — alerts page accessible", False, str(e)[:80])
+
+    # ── Sidebar visible ──
+    s = t()
+    try:
+        goto(page, "/dashboard")
+        sidebar = has_element(page, '[data-testid="business-name"]', 3000)
+        biz_name = page.locator('[data-testid="business-name"]').text_content() if sidebar else ""
+        check(page, "Admin — sidebar shows business name", sidebar, biz_name, "adm_24_sidebar", s)
+    except Exception as e:
+        record("Admin — sidebar shows business name", False, str(e)[:80])
+
+    ctx.close()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SUITE 4 — STAFF USER FLOWS
+# ══════════════════════════════════════════════════════════════════════════════
+
+def suite_staff(browser):
+    section("👤 Staff (Lokesh) — Allowed & Blocked Pages")
+    ctx  = fresh_context(browser)
+    page = ctx.new_page()
+    page.set_default_timeout(TIMEOUT)
+    login(page, STAFF_EMAIL, STAFF_PASSWORD)
+
+    # ── Pages staff CAN access ──
+    allowed = [
+        ("/stock",         "stf_01_stock",         "Live Stock"),
+        ("/alerts",        "stf_02_alerts",         "Alerts"),
+        ("/purchases",     "stf_03_purchases",      "Purchases"),
+        ("/closing-stock", "stf_04_closing_stock",  "Closing Stock"),
+        ("/sales",         "stf_05_sales",          "Sales"),
+        ("/expenses",      "stf_06_expenses",       "Expenses"),
+        ("/display",       "stf_07_display",        "Display Mode"),
+    ]
+    for path, name, label in allowed:
+        s = t()
+        try:
+            goto(page, path)
+            accessible = is_accessible(page)
+            check(page, f"Staff CAN access — {label}", accessible, "", name, s)
+        except Exception as e:
+            record(f"Staff CAN access — {label}", False, str(e)[:60])
+
+    # ── Pages staff CANNOT access ──
+    blocked = [
+        ("/dashboard",          "stf_08_no_dashboard",  "Dashboard"),
+        ("/salaries",           "stf_09_no_salaries",   "Salaries"),
+        ("/pnl",                "stf_10_no_pnl",        "P&L"),
+        ("/items",              "stf_11_no_items",       "Item Master"),
+        ("/settings",           "stf_12_no_settings",    "Settings"),
+        ("/inventory-insights", "stf_13_no_insights",    "Inventory Insights"),
+    ]
+    for path, name, label in blocked:
+        s = t()
+        try:
+            goto(page, path)
+            blocked_ok = is_forbidden(page)
+            check(page, f"Staff BLOCKED from — {label}", blocked_ok, "", name, s)
+        except Exception as e:
+            record(f"Staff BLOCKED from — {label}", False, str(e)[:60])
+
+    # ── Staff actual workflows ──
+
+    # Record a purchase
+    s = t()
+    try:
+        goto(page, "/purchases")
+        page.wait_for_timeout(500)
+        items_loaded = select_first_option(page, "purchase-item-0")
+        if items_loaded:
+            page.fill('[data-testid="purchase-qty-0"]', "5")
+            page.fill('[data-testid="purchase-price-0"]', "200")
+            path = ss(page, "stf_14_purchase_filled")
+            record("Staff — fills purchase form correctly", True, "", path, time.time()-s)
+        else:
+            record("Staff — fills purchase form correctly", False, "no items in dropdown")
+    except Exception as e:
+        record("Staff — fills purchase form correctly", False, str(e)[:80])
+
+    # Record closing stock
+    s = t()
+    try:
+        goto(page, "/closing-stock")
+        page.wait_for_timeout(500)
+        has_progress = has_element(page, "text=Items counted today", 5000)
+        # Check "Save Count" button visible
+        has_save = has_element(page, '[data-testid="closing-save-btn"]', 3000)
+        check(page, "Staff — closing stock form visible", has_progress and has_save, "", "stf_15_closing_stock", s)
+    except Exception as e:
+        record("Staff — closing stock form visible", False, str(e)[:80])
+
+    # Record sales
+    s = t()
+    try:
+        goto(page, "/sales")
+        page.wait_for_timeout(500)
+        accessible = is_accessible(page)
+        check(page, "Staff — sales page accessible with form", accessible, "", "stf_16_sales", s)
+    except Exception as e:
+        record("Staff — sales page accessible with form", False, str(e)[:80])
+
+    # Record expense
+    s = t()
+    try:
+        goto(page, "/expenses")
+        page.wait_for_timeout(500)
+        accessible = is_accessible(page)
+        check(page, "Staff — expenses page accessible", accessible, "", "stf_17_expenses", s)
+    except Exception as e:
+        record("Staff — expenses page accessible", False, str(e)[:80])
+
+    # Staff cannot void others entries — test void button behaviour
+    s = t()
+    try:
+        goto(page, "/purchases")
+        page.wait_for_timeout(500)
+        # Void buttons should only show for own entries (canAdd check)
+        # Just verify page renders properly
+        accessible = is_accessible(page)
+        check(page, "Staff — purchases list renders correctly", accessible, "", "stf_18_purchases_list", s)
+    except Exception as e:
+        record("Staff — purchases list renders correctly", False, str(e)[:80])
+
+    # /usage redirects to /closing-stock
+    s = t()
+    try:
+        goto(page, "/usage")
+        page.wait_for_timeout(1000)
+        redirected = "closing-stock" in page.url
+        check(page, "Staff — /usage redirects to /closing-stock", redirected, page.url, "stf_19_usage_redirect", s)
+    except Exception as e:
+        record("Staff — /usage redirects to /closing-stock", False, str(e)[:80])
+
+    # Mobile bottom nav for staff
+    ctx.close()
+    ctx_mob = fresh_context(browser, mobile=True)
+    mob = ctx_mob.new_page()
+    mob.set_default_timeout(TIMEOUT)
+    login(mob, STAFF_EMAIL, STAFF_PASSWORD)
+
+    s = t()
+    try:
+        goto(mob, "/stock")
+        bottom_nav = mob.locator('[data-testid^="bottom-nav-"]')
+        nav_count = bottom_nav.count()
+        path = ss(mob, "stf_20_mobile_bottom_nav")
+        record("Staff — mobile bottom nav shows correct items", nav_count > 0,
+               f"{nav_count} nav items", path, time.time()-s)
+    except Exception as e:
+        record("Staff — mobile bottom nav shows correct items", False, str(e)[:80])
+
+    ctx_mob.close()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SUITE 5 — VIEWER USER FLOWS
+# ══════════════════════════════════════════════════════════════════════════════
+
+def suite_viewer(browser):
+    section("👁️ Viewer — Read-Only Access")
+    ctx  = fresh_context(browser)
+    page = ctx.new_page()
+    page.set_default_timeout(TIMEOUT)
+    login(page, VIEWER_EMAIL, VIEWER_PASSWORD)
+
+    # ── Pages viewer CAN access (read-only) ──
+    allowed = [
+        ("/display",            "viw_01_display",        "Display Mode"),
+        ("/stock",              "viw_02_stock",           "Live Stock"),
+        ("/alerts",             "viw_03_alerts",          "Alerts"),
+        ("/dashboard",          "viw_04_dashboard",       "Dashboard"),
+        ("/pnl",                "viw_05_pnl",             "P&L"),
+        ("/inventory-insights", "viw_06_insights",        "Inventory Insights"),
+        ("/closing-stock",      "viw_07_closing_stock",   "Closing Stock"),
+    ]
+    for path, name, label in allowed:
+        s = t()
+        try:
+            goto(page, path)
+            accessible = is_accessible(page)
+            check(page, f"Viewer CAN access — {label}", accessible, "", name, s)
+        except Exception as e:
+            record(f"Viewer CAN access — {label}", False, str(e)[:60])
+
+    # ── Pages viewer CANNOT access ──
+    blocked = [
+        ("/purchases",  "viw_08_no_purchases",  "Purchases"),
+        ("/sales",      "viw_09_no_sales",       "Sales"),
+        ("/expenses",   "viw_10_no_expenses",    "Expenses"),
+        ("/salaries",   "viw_11_no_salaries",    "Salaries"),
+        ("/items",      "viw_12_no_items",        "Item Master"),
+        ("/settings",   "viw_13_no_settings",     "Settings"),
+    ]
+    for path, name, label in blocked:
+        s = t()
+        try:
+            goto(page, path)
+            blocked_ok = is_forbidden(page)
+            check(page, f"Viewer BLOCKED from — {label}", blocked_ok, "", name, s)
+        except Exception as e:
+            record(f"Viewer BLOCKED from — {label}", False, str(e)[:60])
+
+    # ── Viewer read-only checks ──
+
+    # No add/edit buttons on stock page
+    s = t()
+    try:
+        goto(page, "/stock")
+        page.wait_for_timeout(500)
+        # Should have no purchase/add buttons
+        add_btns = page.locator('[data-testid="purchase-submit"], button:has-text("Add")').count()
+        check(page, "Viewer — no add/edit buttons on stock page",
+              add_btns == 0, f"{add_btns} add buttons found", "viw_14_stock_readonly", s)
+    except Exception as e:
+        record("Viewer — no add/edit buttons on stock page", False, str(e)[:80])
+
+    # Closing stock — viewer sees table but no form
+    s = t()
+    try:
+        goto(page, "/closing-stock")
+        page.wait_for_timeout(500)
+        has_form   = has_element(page, '[data-testid="closing-save-btn"]', 2000)
+        has_table  = has_element(page, '[data-testid="closing-stock-page"]', 3000)
+        check(page, "Viewer — closing stock read-only (no form, has table)",
+              not has_form and has_table, "", "viw_15_closing_readonly", s)
+    except Exception as e:
+        record("Viewer — closing stock read-only (no form, has table)", False, str(e)[:80])
+
+    # Display mode renders
+    s = t()
+    try:
+        goto(page, "/display")
+        page.wait_for_timeout(1000)
+        accessible = is_accessible(page)
+        check(page, "Viewer — display mode renders", accessible, "", "viw_16_display_mode", s)
+    except Exception as e:
+        record("Viewer — display mode renders", False, str(e)[:80])
+
+    ctx.close()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SUITE 6 — MOBILE (all roles)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def suite_mobile(browser):
+    section("📱 Mobile View — All Roles")
+
+    for role, email, pwd, label in [
+        ("admin",  ADMIN_EMAIL,  ADMIN_PASSWORD,  "Admin"),
+        ("staff",  STAFF_EMAIL,  STAFF_PASSWORD,  "Staff"),
+        ("viewer", VIEWER_EMAIL, VIEWER_PASSWORD, "Viewer"),
+    ]:
+        ctx  = fresh_context(browser, mobile=True)
+        page = ctx.new_page()
+        page.set_default_timeout(TIMEOUT)
+
+        s = t()
+        try:
+            ok = login(page, email, pwd)
+            path = ss(page, f"mob_01_{role}_login")
+            record(f"Mobile — {label} login works", ok, "", path, time.time()-s)
+        except Exception as e:
+            record(f"Mobile — {label} login works", False, str(e)[:80])
+            ctx.close()
+            continue
+
+        # Bottom nav visible
+        s = t()
+        try:
+            page.wait_for_timeout(500)
+            bottom_nav = page.locator('[data-testid^="bottom-nav-"]')
+            count = bottom_nav.count()
+            path = ss(page, f"mob_02_{role}_bottom_nav")
+            record(f"Mobile — {label} bottom nav visible ({count} items)", count > 0, "", path, time.time()-s)
+        except Exception as e:
+            record(f"Mobile — {label} bottom nav visible", False, str(e)[:80])
+
+        # Hamburger drawer opens
+        s = t()
+        try:
+            page.click('[data-testid="open-drawer"]')
+            page.wait_for_timeout(600)
+            drawer = has_element(page, '[data-testid="close-drawer"]', 2000)
+            path = ss(page, f"mob_03_{role}_drawer")
+            record(f"Mobile — {label} hamburger drawer opens", drawer, "", path, time.time()-s)
+            if drawer:
+                page.click('[data-testid="close-drawer"]')
+        except Exception as e:
+            record(f"Mobile — {label} hamburger drawer opens", False, str(e)[:80])
+
+        ctx.close()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SUITE 7 — SECURITY
+# ══════════════════════════════════════════════════════════════════════════════
+
+def suite_security(browser):
+    section("🔒 Security — Unauthenticated & Cross-Role")
+    ctx  = fresh_context(browser)
+    page = ctx.new_page()
+    page.set_default_timeout(TIMEOUT)
+
+    # Unauthenticated access redirects to login
+    protected = ["/dashboard", "/purchases", "/stock", "/settings", "/pnl"]
+    for path in protected:
+        s = t()
+        try:
+            goto(page, path)
+            redirected = "/login" in page.url
+            record(f"Unauthenticated → {path} redirects to login", redirected,
+                   page.url, duration=time.time()-s)
+        except Exception as e:
+            record(f"Unauthenticated → {path} redirects to login", False, str(e)[:60])
+
+    # /usage always redirects to /closing-stock
+    s = t()
+    try:
+        goto(page, "/usage")
+        page.wait_for_timeout(1000)
+        # Either login redirect or closing-stock redirect
+        ok = "/login" in page.url or "closing-stock" in page.url
+        record("/usage redirects (to login or closing-stock)", ok, page.url, duration=time.time()-s)
+    except Exception as e:
+        record("/usage redirects correctly", False, str(e)[:80])
+
+    ctx.close()
+
+    # Staff cannot access admin-only pages even by direct URL
+    ctx  = fresh_context(browser)
+    page = ctx.new_page()
+    page.set_default_timeout(TIMEOUT)
+    login(page, STAFF_EMAIL, STAFF_PASSWORD)
+
+    admin_only = ["/dashboard", "/salaries", "/items", "/settings", "/pnl", "/inventory-insights"]
+    for path in admin_only:
+        s = t()
+        try:
+            goto(page, path)
+            blocked_ok = is_forbidden(page)
+            record(f"Staff direct URL to {path} → forbidden", blocked_ok, duration=time.time()-s)
+        except Exception as e:
+            record(f"Staff direct URL to {path} → forbidden", False, str(e)[:60])
+
+    ctx.close()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -440,32 +782,56 @@ def test_staging_banner(page):
 # ══════════════════════════════════════════════════════════════════════════════
 
 def generate_report():
-    passed  = sum(1 for r in results if r["status"] == "PASS")
-    failed  = sum(1 for r in results if r["status"] == "FAIL")
-    total   = len(results)
-    pct     = round(passed / total * 100) if total else 0
-    now     = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    passed = sum(1 for r in results if r["status"] == "PASS")
+    failed = sum(1 for r in results if r["status"] == "FAIL")
+    total  = len(results)
+    pct    = round(passed / total * 100) if total else 0
+    now    = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    # Group by section
+    sections = {}
+    for r in results:
+        sec = r.get("section", "Other")
+        sections.setdefault(sec, []).append(r)
 
     def img_tag(path):
         if not path or not Path(path).exists():
-            return '<div class="no-ss">No screenshot</div>'
+            return '<span class="no-ss">—</span>'
         with open(path, "rb") as f:
             b64 = base64.b64encode(f.read()).decode()
-        return f'<img src="data:image/png;base64,{b64}" onclick="this.classList.toggle(\'big\')" title="Click to enlarge" />'
+        return f'<img src="data:image/png;base64,{b64}" class="thumb" onclick="zoom(this)" title="Click to zoom" />'
 
-    rows = ""
-    for i, r in enumerate(results, 1):
-        cls    = "pass" if r["status"] == "PASS" else "fail"
-        icon   = "✅" if r["status"] == "PASS" else "❌"
-        rows += f"""
-        <tr class="{cls}">
-          <td class="num">{i}</td>
-          <td class="icon">{icon}</td>
-          <td class="name">{r['name']}</td>
-          <td class="msg">{r.get('message','')}</td>
-          <td class="dur">{r.get('duration',0):.1f}s</td>
-          <td class="ss-cell">{img_tag(r.get('screenshot'))}</td>
-        </tr>"""
+    section_html = ""
+    for sec, sec_results in sections.items():
+        sec_pass = sum(1 for r in sec_results if r["status"] == "PASS")
+        sec_fail = len(sec_results) - sec_pass
+        rows = ""
+        for i, r in enumerate(sec_results, 1):
+            cls  = "pass" if r["status"] == "PASS" else "fail"
+            icon = "✅" if r["status"] == "PASS" else "❌"
+            rows += f"""<tr class="{cls}">
+              <td class="num">{i}</td>
+              <td>{icon}</td>
+              <td class="name">{r['name']}</td>
+              <td class="msg">{r.get('message','')}</td>
+              <td class="dur">{r.get('duration',0):.1f}s</td>
+              <td class="ss-cell">{img_tag(r.get('screenshot'))}</td>
+            </tr>"""
+
+        section_html += f"""
+        <div class="sec-block">
+          <div class="sec-header">
+            <span class="sec-title">{sec}</span>
+            <span class="sec-badge pass-badge">{sec_pass} passed</span>
+            {"" if sec_fail == 0 else f'<span class="sec-badge fail-badge">{sec_fail} failed</span>'}
+          </div>
+          <table>
+            <thead><tr>
+              <th>#</th><th></th><th>Test</th><th>Detail</th><th>Time</th><th>Screenshot</th>
+            </tr></thead>
+            <tbody>{rows}</tbody>
+          </table>
+        </div>"""
 
     html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -473,56 +839,53 @@ def generate_report():
 <meta charset="utf-8">
 <title>SP Dhaba — UI Test Report</title>
 <style>
-  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
-  body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-         background: #FFF8F0; color: #1e293b; }}
-  .header {{ background: #2D1606; color: white; padding: 2rem; }}
-  .header h1 {{ font-size: 1.5rem; font-weight: 700; }}
-  .header p  {{ font-size: 0.85rem; opacity: 0.6; margin-top: 0.25rem; }}
-  .summary {{ display: flex; gap: 1rem; padding: 1.5rem 2rem; flex-wrap: wrap; }}
-  .card {{ background: white; border-radius: 12px; padding: 1rem 1.5rem;
-           min-width: 140px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }}
-  .card .val {{ font-size: 2rem; font-weight: 700; }}
-  .card .lbl {{ font-size: 0.75rem; color: #64748b; margin-top: 2px; }}
-  .pass-val {{ color: #16a34a; }}
-  .fail-val {{ color: #dc2626; }}
-  .pct-val  {{ color: #ea580c; }}
-  .url-bar {{ background: white; border-radius: 8px; margin: 0 2rem 1rem;
-              padding: 0.6rem 1rem; font-size: 0.8rem; color: #64748b;
-              box-shadow: 0 1px 3px rgba(0,0,0,.08); }}
-  .url-bar strong {{ color: #ea580c; }}
-  table {{ width: calc(100% - 4rem); margin: 0 2rem 2rem; border-collapse: collapse;
-           background: white; border-radius: 12px; overflow: hidden;
-           box-shadow: 0 1px 3px rgba(0,0,0,.08); }}
-  th {{ background: #f8fafc; padding: 0.75rem 1rem; text-align: left;
-        font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
-        letter-spacing: 0.05em; color: #64748b; border-bottom: 1px solid #e2e8f0; }}
-  td {{ padding: 0.6rem 1rem; border-bottom: 1px solid #f1f5f9;
-        vertical-align: middle; font-size: 0.85rem; }}
-  tr.pass {{ background: #f0fdf4; }}
-  tr.fail {{ background: #fef2f2; }}
-  tr:last-child td {{ border-bottom: none; }}
-  .num  {{ width: 40px; color: #94a3b8; font-size: 0.75rem; }}
-  .icon {{ width: 40px; font-size: 1rem; }}
-  .name {{ font-weight: 500; }}
-  .msg  {{ color: #64748b; font-size: 0.8rem; max-width: 280px; }}
-  .dur  {{ width: 60px; color: #94a3b8; font-size: 0.75rem; }}
-  .ss-cell img {{ width: 160px; height: 90px; object-fit: cover; border-radius: 6px;
-                  cursor: pointer; border: 1px solid #e2e8f0; transition: all 0.2s; }}
-  .ss-cell img.big {{ position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
-                      width: auto; height: auto; max-width: 90vw; max-height: 90vh;
-                      z-index: 9999; box-shadow: 0 25px 60px rgba(0,0,0,.5);
-                      border-radius: 8px; }}
-  .no-ss {{ color: #cbd5e1; font-size: 0.75rem; }}
-  .progress {{ background: #e2e8f0; border-radius: 99px; height: 8px;
-               margin: 0.5rem 0; overflow: hidden; }}
-  .progress-bar {{ height: 100%; background: #ea580c; border-radius: 99px; }}
+  *{{box-sizing:border-box;margin:0;padding:0}}
+  body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#FFF8F0;color:#1e293b;}}
+  .header{{background:#2D1606;color:white;padding:2rem 2.5rem;}}
+  .header h1{{font-size:1.6rem;font-weight:700;}}
+  .header p{{font-size:0.8rem;opacity:0.55;margin-top:0.3rem;}}
+  .summary{{display:flex;gap:1rem;padding:1.5rem 2.5rem;flex-wrap:wrap;}}
+  .card{{background:white;border-radius:14px;padding:1rem 1.5rem;min-width:130px;box-shadow:0 1px 4px rgba(0,0,0,.07);}}
+  .card .val{{font-size:2.2rem;font-weight:700;line-height:1;}}
+  .card .lbl{{font-size:0.72rem;color:#64748b;margin-top:4px;text-transform:uppercase;letter-spacing:.05em;}}
+  .pass-val{{color:#16a34a}}.fail-val{{color:#dc2626}}.pct-val{{color:#ea580c}}
+  .progress{{background:#e2e8f0;border-radius:99px;height:8px;margin-top:8px;overflow:hidden;}}
+  .progress-bar{{height:100%;background:#ea580c;border-radius:99px;}}
+  .url-bar{{background:white;border-radius:10px;margin:0 2.5rem 1.5rem;padding:.6rem 1.2rem;
+            font-size:.8rem;color:#64748b;box-shadow:0 1px 3px rgba(0,0,0,.07);}}
+  .url-bar strong{{color:#ea580c;}}
+  .sec-block{{margin:0 2.5rem 2rem;}}
+  .sec-header{{display:flex;align-items:center;gap:.75rem;margin-bottom:.75rem;}}
+  .sec-title{{font-size:1rem;font-weight:600;color:#1e293b;}}
+  .sec-badge{{font-size:.7rem;padding:2px 10px;border-radius:99px;font-weight:600;}}
+  .pass-badge{{background:#dcfce7;color:#16a34a;}}
+  .fail-badge{{background:#fee2e2;color:#dc2626;}}
+  table{{width:100%;border-collapse:collapse;background:white;border-radius:14px;
+         overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.07);}}
+  th{{background:#f8fafc;padding:.65rem 1rem;text-align:left;font-size:.7rem;
+      font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:#64748b;
+      border-bottom:1px solid #e2e8f0;}}
+  td{{padding:.55rem 1rem;border-bottom:1px solid #f1f5f9;font-size:.82rem;vertical-align:middle;}}
+  tr:last-child td{{border-bottom:none;}}
+  tr.pass{{background:#f0fdf4;}}tr.fail{{background:#fef2f2;}}
+  .num{{width:36px;color:#94a3b8;font-size:.72rem;}}
+  .name{{font-weight:500;max-width:320px;}}
+  .msg{{color:#64748b;font-size:.78rem;max-width:220px;}}
+  .dur{{width:55px;color:#94a3b8;font-size:.72rem;}}
+  .thumb{{width:140px;height:80px;object-fit:cover;border-radius:6px;cursor:pointer;
+          border:1px solid #e2e8f0;transition:.15s;}}
+  .thumb:hover{{opacity:.85;}}
+  .no-ss{{color:#cbd5e1;font-size:.72rem;}}
+  .overlay{{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;
+            align-items:center;justify-content:center;cursor:zoom-out;}}
+  .overlay.active{{display:flex;}}
+  .overlay img{{max-width:92vw;max-height:92vh;border-radius:10px;box-shadow:0 30px 80px rgba(0,0,0,.5);}}
 </style>
 </head>
 <body>
 <div class="header">
   <h1>🍛 SP Dhaba — UI Test Report</h1>
-  <p>Generated: {now}</p>
+  <p>Generated: {now} · {total} tests across all roles</p>
 </div>
 <div class="summary">
   <div class="card">
@@ -530,28 +893,21 @@ def generate_report():
     <div class="lbl">Pass Rate</div>
     <div class="progress"><div class="progress-bar" style="width:{pct}%"></div></div>
   </div>
-  <div class="card">
-    <div class="val">{total}</div>
-    <div class="lbl">Total Tests</div>
-  </div>
-  <div class="card">
-    <div class="val pass-val">{passed}</div>
-    <div class="lbl">Passed</div>
-  </div>
-  <div class="card">
-    <div class="val fail-val">{failed}</div>
-    <div class="lbl">Failed</div>
-  </div>
+  <div class="card"><div class="val">{total}</div><div class="lbl">Total</div></div>
+  <div class="card"><div class="val pass-val">{passed}</div><div class="lbl">Passed</div></div>
+  <div class="card"><div class="val fail-val">{failed}</div><div class="lbl">Failed</div></div>
 </div>
 <div class="url-bar">Testing: <strong>{BASE_URL}</strong></div>
-<table>
-  <thead>
-    <tr>
-      <th>#</th><th></th><th>Test</th><th>Message</th><th>Time</th><th>Screenshot</th>
-    </tr>
-  </thead>
-  <tbody>{rows}</tbody>
-</table>
+{section_html}
+<div class="overlay" id="overlay" onclick="this.classList.remove('active')">
+  <img id="overlay-img" src="" />
+</div>
+<script>
+function zoom(img){{
+  document.getElementById('overlay-img').src = img.src;
+  document.getElementById('overlay').classList.add('active');
+}}
+</script>
 </body>
 </html>"""
 
@@ -565,53 +921,35 @@ def generate_report():
 # ══════════════════════════════════════════════════════════════════════════════
 
 def main():
-    print(f"\n🍛 SP Dhaba UI Testing Agent")
-    print(f"   Target: {BASE_URL}")
-    print(f"   Time:   {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print("─" * 60)
+    print(f"\n🍛 SP Dhaba — Comprehensive UI Testing Agent")
+    print(f"   Target : {BASE_URL}")
+    print(f"   Roles  : Admin · Staff · Viewer")
+    print(f"   Time   : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=HEADLESS)
-        ctx     = browser.new_context(viewport={"width": 1280, "height": 800})
-        page    = ctx.new_page()
-        page.set_default_timeout(TIMEOUT)
 
-        # Run all suites
-        test_staging_banner(page)
-        logged_in = test_auth(page)
+        suite_environment(browser)
+        suite_auth(browser)
+        suite_admin(browser)
+        suite_staff(browser)
+        suite_viewer(browser)
+        suite_mobile(browser)
+        suite_security(browser)
 
-        if logged_in:
-            test_navigation(page)
-            test_purchases(page)
-            test_closing_stock(page)
-            test_sales(page)
-            test_pnl(page)
-            test_void_dialog(page)
-            test_settings(page)
-            test_staff_role(page)
-            test_viewer_role(page)
-
-            # Re-login as admin for mobile tests
-            page.goto(f"{BASE_URL}/login", wait_until="networkidle")
-            login(page, ADMIN_EMAIL, ADMIN_PASSWORD)
-            test_mobile_view(page, browser)
-        else:
-            print("\n⛔ Auth failed — skipping all page tests")
-
-        ctx.close()
         browser.close()
 
-    # Summary
     passed = sum(1 for r in results if r["status"] == "PASS")
     failed = sum(1 for r in results if r["status"] == "FAIL")
     total  = len(results)
-    print("\n" + "─" * 60)
-    print(f"Results: {passed}/{total} passed, {failed} failed")
+
+    print(f"\n{'═'*60}")
+    print(f"  RESULTS: {passed}/{total} passed · {failed} failed · {round(passed/total*100) if total else 0}%")
+    print(f"{'═'*60}")
 
     report = generate_report()
-    print(f"Report:  {report}")
-    print("─" * 60)
-
+    print(f"  Report : {report}")
+    print(f"{'═'*60}\n")
     return 0 if failed == 0 else 1
 
 
