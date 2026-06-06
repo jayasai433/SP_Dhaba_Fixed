@@ -15,7 +15,7 @@ export function useClosingStock() {
   const [saving, setSaving]   = useState(false);
   const [loading, setLoading] = useState(false);
   const [entries, setEntries] = useState([]);
-  const [summary, setSummary] = useState(null);
+  // summary intentionally removed — wastage analysis requires recipe mapping first
 
   /** Record physical shelf count for one item */
   const recordCount = useCallback(async (payload) => {
@@ -50,16 +50,5 @@ export function useClosingStock() {
     }
   }, []);
 
-  /** Load daily summary (wastage cost, high variance items) */
-  const loadSummary = useCallback(async (dateStr) => {
-    try {
-      const { data } = await api.get(`/closing-stock/${dateStr}/summary`);
-      setSummary(data);
-    } catch (err) {
-      console.error("Failed to load summary:", err);
-      setSummary(null);
-    }
-  }, []);
-
-  return { saving, loading, entries, summary, recordCount, loadByDate, loadSummary };
+  return { saving, loading, entries, recordCount, loadByDate };
 }
