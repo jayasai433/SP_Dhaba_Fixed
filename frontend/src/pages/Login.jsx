@@ -9,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { toast } from "sonner";
 import { formatApiError } from "@/lib/api";
 import { Eye, EyeOff, LogIn } from "lucide-react";
+import StagingBanner from "@/components/StagingBanner";
 
 // Background image — Indian food/dhaba themed (Unsplash, free to use)
 const BG = "https://static.prod-images.emergentagent.com/jobs/f68fc50c-9f59-4269-9dfe-a9e0ce5b55d2/images/919311037b7ede6c209aa3ca33ec36a221357d00035ce1a4bed257be277dedcc.png";
@@ -144,5 +145,6 @@ export default function Login() {
         </Card>
       </div>
     </div>
+    </>
   );
 }

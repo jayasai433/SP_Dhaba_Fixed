@@ -101,11 +101,21 @@ async def root():
 
 @app.get("/api/health")
 async def health():
-    """Deep health check — verifies DB connectivity"""
+    """
+    Deep health check — verifies DB connectivity.
+    Also returns environment and DB name so the frontend
+    can confirm it is talking to the correct backend.
+    """
+    from core.config import ENVIRONMENT, DB_NAME
     try:
         from core.db import client
         await client.admin.command("ping")
-        return {"status": "ok", "db": "connected"}
+        return {
+            "status":      "ok",
+            "db":          "connected",
+            "db_name":     DB_NAME,
+            "environment": ENVIRONMENT,
+        }
     except Exception as e:
         from fastapi import HTTPException
         raise HTTPException(status_code=503, detail=f"DB unavailable: {str(e)[:100]}")
