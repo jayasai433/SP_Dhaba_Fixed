@@ -92,34 +92,53 @@ def fresh_context(browser, mobile=False):
     return browser.new_context(viewport={"width": 1280, "height": 800})
 
 def login(page, email, password, expect_success=True):
-    """Login with retry — handles Railway cold-start slowness."""
+    """
+    Login helper — waits only for the form element, not full networkidle.
+    networkidle can hang on slow Railway frontends waiting for API calls.
+    Instead we wait for the URL to change away from /login.
+    """
     for attempt in range(3):
         try:
             page.goto(f"{BASE_URL}/login", wait_until="domcontentloaded", timeout=TIMEOUT)
+            # Wait only for the input to appear — not full page load
             page.wait_for_selector('[data-testid="login-email-input"]', timeout=TIMEOUT)
             page.fill('[data-testid="login-email-input"]', email)
             page.fill('[data-testid="login-password-input"]', password)
             page.click('[data-testid="login-submit-button"]')
-            page.wait_for_load_state("networkidle", timeout=TIMEOUT)
-            page.wait_for_timeout(1000)
+            # Wait for URL to change — much more reliable than networkidle
             if expect_success:
-                return "/login" not in page.url
+                try:
+                    page.wait_for_url(lambda url: "/login" not in url, timeout=TIMEOUT)
+                    page.wait_for_timeout(800)
+                    return True
+                except Exception:
+                    return False
             else:
+                page.wait_for_timeout(2000)
                 return "/login" in page.url
         except Exception as e:
             if attempt == 2:
                 return False
             print(f"    ⟳ Login retry {attempt+1}...")
-            page.wait_for_timeout(3000)
+            page.wait_for_timeout(2000)
     return False
 
 def goto(page, path, retries=2):
-    """Navigate with retry — handles Railway cold-start slowness."""
+    """
+    Navigate with retry.
+    Uses domcontentloaded + waits for React root to render,
+    NOT networkidle — networkidle hangs waiting for API calls to finish
+    which can take 10-20s on slow Railway instances.
+    """
     for attempt in range(retries + 1):
         try:
             page.goto(f"{BASE_URL}{path}", wait_until="domcontentloaded", timeout=TIMEOUT)
-            page.wait_for_load_state("networkidle", timeout=10000)
-            page.wait_for_timeout(600)
+            # Wait for React to mount — app-shell or login page
+            page.wait_for_selector(
+                '[data-testid="app-shell"], [data-testid="login-page"], [data-testid="forbidden-page"]',
+                timeout=15000
+            )
+            page.wait_for_timeout(500)
             return
         except Exception as e:
             if attempt == retries:
@@ -168,8 +187,9 @@ def suite_environment(browser):
     # Banner check
     s = t()
     try:
-        page.goto(f"{BASE_URL}/login", wait_until="networkidle", timeout=TIMEOUT)
-        page.wait_for_timeout(2000)
+        page.goto(f"{BASE_URL}/login", wait_until="domcontentloaded", timeout=TIMEOUT)
+        page.wait_for_selector('[data-testid="login-page"]', timeout=TIMEOUT)
+        page.wait_for_timeout(1500)
         has_banner = (
             page.locator("text=STAGING").count() > 0 or
             page.locator("text=Production").count() > 0 or
