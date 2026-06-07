@@ -5,13 +5,22 @@ from pydantic import BaseModel, Field, field_validator
 MAX_AMOUNT = 999_999.99  # Max ₹9.99 lakh per entry — reasonable for a dhaba
 
 def _validate_date(v: str) -> str:
-    """Enforce YYYY-MM-DD format and reject future dates."""
+    """
+    Enforce YYYY-MM-DD format and reject future dates.
+    Compares against IST (Asia/Kolkata) date — not UTC.
+    Between 12am-5:30am IST the UTC date is still the previous day,
+    so using UTC.today() incorrectly rejects valid IST dates as "future".
+    """
     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", v):
         raise ValueError("Date must be in YYYY-MM-DD format")
     try:
         from datetime import date as _date
+        import pytz
+        ist = pytz.timezone("Asia/Kolkata")
+        from datetime import datetime
+        today_ist = datetime.now(ist).date()
         entry_date = _date.fromisoformat(v)
-        if entry_date > _date.today():
+        if entry_date > today_ist:
             raise ValueError("Future dates are not allowed for financial entries")
     except ValueError as e:
         raise e

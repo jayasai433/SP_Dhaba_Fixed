@@ -15,11 +15,17 @@ from pydantic import BaseModel, Field, field_validator
 
 
 def _validate_date(v: str) -> str:
-    """Enforce YYYY-MM-DD, reject future dates."""
-    from datetime import date
+    """
+    Enforce YYYY-MM-DD, reject future dates.
+    Uses IST (Asia/Kolkata) for today — between 12am-5:30am IST
+    the UTC date is still the previous day, causing false rejections.
+    """
+    from datetime import date, datetime
+    import pytz
     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", v):
         raise ValueError("Date must be YYYY-MM-DD format")
-    if date.fromisoformat(v) > date.today():
+    today_ist = datetime.now(pytz.timezone("Asia/Kolkata")).date()
+    if date.fromisoformat(v) > today_ist:
         raise ValueError("Future dates not allowed")
     return v
 
