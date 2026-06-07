@@ -50,16 +50,62 @@ def scenario(name):
     CURRENT = name
     print(f"\n{'━'*65}\n  {name}\n{'━'*65}")
 
-def step(page, name, ok, detail="", ss_name=None, start=None):
+def snap(page, name, clip=None):
+    """
+    Take a screenshot with optional clip region.
+    clip = "form" → crops to main content area, hides sidebar
+    clip = "toast" → waits for toast then crops to top-right
+    clip = "table" → crops to first table on page
+    Always waits briefly so animations settle.
+    """
+    p = SS_DIR / f"{name}.png"
+    try:
+        page.wait_for_timeout(400)  # let animations settle
+
+        if clip == "toast":
+            # Wait for toast to appear then screenshot top-right corner
+            try:
+                page.wait_for_selector('[data-sonner-toast]', timeout=4000)
+                page.wait_for_timeout(200)
+            except Exception:
+                pass
+            page.screenshot(path=str(p), full_page=False)
+
+        elif clip == "form":
+            # Screenshot main content only — hide sidebar to focus on form
+            page.evaluate("""
+                const sidebar = document.querySelector('[data-testid="sidebar"]');
+                if (sidebar) sidebar.style.opacity = '0.1';
+            """)
+            page.screenshot(path=str(p), full_page=False)
+            page.evaluate("""
+                const sidebar = document.querySelector('[data-testid="sidebar"]');
+                if (sidebar) sidebar.style.opacity = '1';
+            """)
+
+        elif clip == "table":
+            # Screenshot just the table area
+            table = page.locator('table, [data-testid$="-list"]').first
+            if table.count() > 0:
+                table.screenshot(path=str(p))
+            else:
+                page.screenshot(path=str(p), full_page=False)
+
+        else:
+            page.screenshot(path=str(p), full_page=False)
+
+        return str(p)
+    except Exception:
+        return None
+
+
+def step(page, name, ok, detail="", ss_name=None, start=None, clip=None):
+    """
+    Record a test step with smart screenshot.
+    clip: None=full page, "form"=content area, "toast"=after toast, "table"=table only
+    """
     dur  = round(time.time() - start, 1) if start else 0
-    path = None
-    if ss_name:
-        p = SS_DIR / f"{ss_name}.png"
-        try:
-            page.screenshot(path=str(p), full_page=True)
-            path = str(p)
-        except Exception:
-            pass
+    path = snap(page, ss_name, clip) if ss_name else None
     RESULTS.append({"scenario": CURRENT, "name": name,
                     "status": "PASS" if ok else "FAIL",
                     "detail": detail, "screenshot": path, "duration": dur})
@@ -265,18 +311,22 @@ def s1_staff_purchases(browser):
         page.fill('[data-testid="purchase-price-input"]', "200")
         page.wait_for_timeout(400)
         preview = txt(page, "purchase-total-preview")
+        # Screenshot: filled form showing item + qty + price + total preview
         step(page, f"Purchase 1: 10 × ₹200 = ₹2,000 [{item1}]",
              "2,000" in preview or "2000" in preview,
-             f"Preview: {preview}", "s1_04_p1_preview", s)
+             f"Preview: {preview}", "s1_04_p1_form_filled", s, clip="form")
 
         before = row_count(page, "purchase-row-")
         page.click('[data-testid="purchase-submit-button"]')
+        # Screenshot: capture toast while it's visible
         t = toast_text(page)
+        snap(page, "s1_04b_p1_toast", clip="toast")
         page.wait_for_timeout(1500)
         after = row_count(page, "purchase-row-")
+        # Screenshot: table showing new row
         step(page, "Purchase 1 saved — row appears in list",
              after > before,
-             f"rows {before}→{after}, toast: {t[:40]}", "s1_05_p1_saved", s)
+             f"rows {before}→{after}, toast: {t[:40]}", "s1_05_p1_saved", s, clip="table")
     except Exception as e:
         step(page, "Purchase 1", False, str(e)[:100])
 
@@ -290,15 +340,16 @@ def s1_staff_purchases(browser):
         preview = txt(page, "purchase-total-preview")
         step(page, f"Purchase 2: 5 × ₹30 = ₹150 [{item2}]",
              "150" in preview,
-             f"Preview: {preview}", "s1_06_p2_preview", s)
+             f"Preview: {preview}", "s1_06_p2_form_filled", s, clip="form")
 
         before = row_count(page, "purchase-row-")
         page.click('[data-testid="purchase-submit-button"]')
+        snap(page, "s1_06b_p2_toast", clip="toast")
         page.wait_for_timeout(1500)
         after = row_count(page, "purchase-row-")
         step(page, "Purchase 2 saved — row appears in list",
              after > before,
-             f"rows {before}→{after}", "s1_07_p2_saved", s)
+             f"rows {before}→{after}", "s1_07_p2_saved", s, clip="table")
     except Exception as e:
         step(page, "Purchase 2", False, str(e)[:100])
 
@@ -343,21 +394,24 @@ def s2_closing_stock(browser):
         page.fill('[data-testid="closing-qty-input"]', "7")
         page.fill('[data-testid="closing-notes-input"]', "Counted after dinner service")
 
+        # Screenshot: form filled before saving
+        snap(page, "s2_01b_closing_form_filled", clip="form")
         before = row_count(page, "closing-row-")
         page.click('[data-testid="closing-save-btn"]')
         t = toast_text(page)
+        snap(page, "s2_02b_closing_toast", clip="toast")
         page.wait_for_timeout(1500)
         after = row_count(page, "closing-row-")
         step(page, f"Closing count saved for {item1} (qty=7)",
              after > before,
-             f"rows {before}→{after}, toast: {t[:40]}", "s2_02_saved", s)
+             f"rows {before}→{after}, toast: {t[:40]}", "s2_02_saved", s, clip="table")
 
         # Verify row shows formula columns
         if after > 0:
             row_text = page.locator('[data-testid^="closing-row-"]').first.text_content()
             step(page, "Row shows Opening / Purchased / Closing / Consumed",
                  len(row_text) > 10,
-                 row_text[:120], "s2_03_formula", s)
+                 row_text[:120], "s2_03_formula", s, clip="table")
     except Exception as e:
         step(page, "Closing stock entry 1", False, str(e)[:100])
 
@@ -400,16 +454,17 @@ def s3_sales_expenses(browser):
         total = txt(page, "sales-total-preview")
         step(page, "Sales total: ₹5000 + ₹4000 + ₹500 = ₹9,500",
              "9,500" in total or "9500" in total,
-             f"Preview: {total}", "s3_01_sales_total", s)
+             f"Preview: {total}", "s3_01_sales_form_filled", s, clip="form")
 
         before = row_count(page, "sales-row-")
         page.click('[data-testid="sales-submit-button"]')
         t = toast_text(page)
+        snap(page, "s3_01b_sales_toast", clip="toast")
         page.wait_for_timeout(1500)
         after = row_count(page, "sales-row-")
         step(page, "Sales entry saved — appears in list",
              after > before or "success" in t.lower() or "saved" in t.lower(),
-             f"rows {before}→{after}", "s3_02_sales_saved", s)
+             f"rows {before}→{after}", "s3_02_sales_saved", s, clip="table")
     except Exception as e:
         step(page, "Sales entry", False, str(e)[:100])
 
@@ -535,26 +590,31 @@ def s5_void_flow(browser):
     # Open void dialog
     s = time.time()
     void_btns.first.click()
-    page.wait_for_timeout(600)
+    page.wait_for_timeout(800)
     dialog = has(page, '[data-testid="void-dialog"]', 3000)
+    # Screenshot: full dialog visible
     step(page, "Void dialog opens on click",
          dialog, "", "s5_02_dialog_open", s)
 
     if not dialog:
         ctx.close(); return
 
-    # Empty reason shows error
+    # Empty reason shows error — screenshot the error message
     s = time.time()
     page.click('[data-testid="void-confirm-btn"]')
-    page.wait_for_timeout(400)
+    page.wait_for_timeout(600)
+    has_err = has(page, '[data-testid="void-reason-error"]', 2000)
     step(page, "Empty reason shows validation error",
-         has(page, '[data-testid="void-reason-error"]', 2000),
-         "", "s5_03_validation", s)
+         has_err, "", "s5_03_validation", s, clip="form")
+
+    # Fill reason — screenshot filled dialog
+    page.fill('[data-testid="void-reason-input"]', "Duplicate entry — UAT test")
+    snap(page, "s5_03b_void_reason_filled", clip="form")
 
     # Cancel closes dialog
     s = time.time()
     page.click('[data-testid="void-cancel-btn"]')
-    page.wait_for_timeout(400)
+    page.wait_for_timeout(500)
     step(page, "Cancel closes void dialog",
          page.locator('[data-testid="void-dialog"]').count() == 0,
          "", "s5_04_cancel", s)
@@ -563,15 +623,17 @@ def s5_void_flow(browser):
     s = time.time()
     before = row_count(page, "purchase-row-")
     page.locator('[data-testid^="void-purchase-"]').first.click()
-    page.wait_for_timeout(600)
+    page.wait_for_timeout(800)
     page.fill('[data-testid="void-reason-input"]', "Duplicate entry — UAT test")
+    snap(page, "s5_05b_void_filled_dialog", clip="form")
     page.click('[data-testid="void-confirm-btn"]')
     t = toast_text(page, 5000)
+    snap(page, "s5_05c_void_toast", clip="toast")
     page.wait_for_timeout(2000)
     after = row_count(page, "purchase-row-")
     step(page, "Void confirmed — entry removed from list",
          after < before or "void" in t.lower(),
-         f"rows {before}→{after}", "s5_05_voided", s)
+         f"rows {before}→{after}", "s5_05_voided", s, clip="table")
 
     ctx.close()
 
