@@ -112,12 +112,29 @@ export default function Dashboard() {
             </div>
             <div className="h-64 w-full" style={{ minHeight: 240 }}>
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={data.sales_trend}>
+                <LineChart data={data.sales_trend} margin={{ left: 10, right: 10, bottom: 5 }}>
                   <CartesianGrid stroke="#F0E1D3" strokeDasharray="3 3" />
-                  <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#64748B" }} tickFormatter={(d) => d.slice(5)} />
-                  <YAxis tick={{ fontSize: 11, fill: "#64748B" }} tickFormatter={(v) => `₹${v}`} />
+                  <XAxis
+                    dataKey="date"
+                    tick={{ fontSize: 10, fill: "#64748B" }}
+                    tickFormatter={(d) => {
+                      const dt = new Date(d + "T00:00:00");
+                      return dt.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+                    }}
+                    interval="preserveStartEnd"
+                    minTickGap={40}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 10, fill: "#64748B" }}
+                    tickFormatter={(v) => {
+                      if (v >= 100000) return `₹${(v / 100000).toFixed(1)}L`;
+                      if (v >= 1000)   return `₹${(v / 1000).toFixed(0)}k`;
+                      return `₹${v}`;
+                    }}
+                    width={55}
+                  />
                   <Tooltip formatter={(v) => inr(v)} labelFormatter={fmtDate} />
-                  <Line type="monotone" dataKey="amount" stroke="#E65C00" strokeWidth={2.5} dot={false} />
+                  <Line type="monotone" dataKey="amount" stroke="#E65C00" strokeWidth={2.5} dot={{ r: 2, fill: "#E65C00" }} activeDot={{ r: 4 }} />
                 </LineChart>
               </ResponsiveContainer>
             </div>

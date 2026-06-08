@@ -44,7 +44,8 @@ class PurchaseIn(BaseModel):
     item_id:        str = Field(min_length=1, max_length=100)
     date:           str = Field(min_length=10, max_length=10)
     quantity:       float = Field(gt=0, le=100_000)
-    price_per_unit: float = Field(ge=0, le=MAX_AMOUNT)
+    price_per_unit: float = Field(gt=0, le=MAX_AMOUNT,
+                                     description="Price must be greater than 0")
     notes:          str = Field(default="", max_length=500)
 
     @field_validator("date")

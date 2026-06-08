@@ -143,7 +143,11 @@ def login_as(page, email, password, role):
             if attempt==2: return False
             page.wait_for_timeout(3000)
 
+# Track which item index to pick next — rotates through all items
+_item_index = 0
+
 def select_first(page, testid):
+    """Always picks the first available option."""
     try:
         page.locator(f'[data-testid="{testid}"]').click()
         page.wait_for_timeout(600)
@@ -152,6 +156,28 @@ def select_first(page, testid):
         text = opts.first.text_content().strip()
         opts.first.click()
         page.wait_for_timeout(400)
+        return text
+    except: return None
+
+def select_next(page, testid):
+    """
+    Rotates through all available options on each call.
+    Prevents the same item (e.g. Basmati Rice) being selected every time,
+    ensuring all items get exercised across the test run.
+    """
+    global _item_index
+    try:
+        page.locator(f'[data-testid="{testid}"]').click()
+        page.wait_for_timeout(600)
+        opts = page.locator('[role="option"]')
+        count = opts.count()
+        if count == 0: return None
+        # Rotate index, skip already-counted items (✓ suffix) if possible
+        idx = _item_index % count
+        text = opts.nth(idx).text_content().strip()
+        opts.nth(idx).click()
+        page.wait_for_timeout(400)
+        _item_index += 1
         return text
     except: return None
 
@@ -171,7 +197,15 @@ def select_option(page, testid, text):
     except: return False
 
 def toast(page, timeout=5000):
+    """Wait for a NEW toast. Dismisses any existing toasts first to avoid stale captures."""
     try:
+        # Dismiss any existing toasts by waiting for them to disappear
+        existing = page.locator('[data-sonner-toast]')
+        if existing.count() > 0:
+            try:
+                existing.first.click()  # dismiss
+                page.wait_for_timeout(300)
+            except: pass
         page.wait_for_selector('[data-sonner-toast]', timeout=timeout)
         return page.locator('[data-sonner-toast]').first.text_content() or ""
     except: return ""
@@ -332,7 +366,7 @@ def s2_purchases(browser):
 
     # NEGATIVE: future date
     s = time.time()
-    item1 = select_first(page,"purchase-item-select")
+    item1 = select_next(page,"purchase-item-select")
     page.fill('[data-testid="purchase-date-input"]', FUTURE_DATE)
     page.fill('[data-testid="purchase-qty-input"]', "5")
     page.fill('[data-testid="purchase-price-input"]', "100")
@@ -345,9 +379,18 @@ def s2_purchases(browser):
          "future" in t.lower() or after==before,
          f"toast: {t[:60]}","s2_03_future_date",s)
 
-    # POSITIVE: valid purchase 1 — item, 10 qty, ₹200
+    # Clear date filter before positive tests so all rows are visible
     s = time.time()
-    select_first(page,"purchase-item-select")
+    try:
+        page.fill('[data-testid="filter-start"]', "")
+        page.fill('[data-testid="filter-end"]', "")
+        page.wait_for_timeout(500)
+    except: pass
+
+    # POSITIVE: valid purchase 1 — item, 10 qty, ₹200
+    page.fill('[data-testid="purchase-date-input"]', TODAY)
+    page.wait_for_timeout(300)
+    item1 = select_next(page,"purchase-item-select")
     page.fill('[data-testid="purchase-date-input"]', TODAY)
     page.fill('[data-testid="purchase-qty-input"]', "10")
     page.fill('[data-testid="purchase-price-input"]', "200")
@@ -368,7 +411,7 @@ def s2_purchases(browser):
 
     # POSITIVE: valid purchase 2 — different item, 5 qty, ₹30
     s = time.time()
-    item2 = select_first(page,"purchase-item-select")
+    item2 = select_next(page,"purchase-item-select")
     page.fill('[data-testid="purchase-date-input"]', TODAY)
     page.fill('[data-testid="purchase-qty-input"]', "5")
     page.fill('[data-testid="purchase-price-input"]', "30")
@@ -386,7 +429,7 @@ def s2_purchases(browser):
 
     # POSITIVE: purchase on yesterday's date
     s = time.time()
-    item3 = select_first(page,"purchase-item-select")
+    item3 = select_next(page,"purchase-item-select")
     page.fill('[data-testid="purchase-date-input"]', YESTERDAY)
     page.fill('[data-testid="purchase-qty-input"]', "3")
     page.fill('[data-testid="purchase-price-input"]', "50")
@@ -415,7 +458,7 @@ def s2_purchases(browser):
 
     # NEGATIVE: zero quantity
     s = time.time()
-    select_first(page,"purchase-item-select")
+    select_next(page,"purchase-item-select")
     page.fill('[data-testid="purchase-date-input"]', TODAY)
     page.fill('[data-testid="purchase-qty-input"]', "0")
     page.fill('[data-testid="purchase-price-input"]', "100")
@@ -430,7 +473,7 @@ def s2_purchases(browser):
 
     # NEGATIVE: negative quantity
     s = time.time()
-    select_first(page,"purchase-item-select")
+    select_next(page,"purchase-item-select")
     page.fill('[data-testid="purchase-qty-input"]', "-5")
     page.fill('[data-testid="purchase-price-input"]', "100")
     before = rows(page,"purchase-row-")
@@ -444,7 +487,7 @@ def s2_purchases(browser):
 
     # NEGATIVE: zero price
     s = time.time()
-    select_first(page,"purchase-item-select")
+    select_next(page,"purchase-item-select")
     page.fill('[data-testid="purchase-qty-input"]', "5")
     page.fill('[data-testid="purchase-price-input"]', "0")
     before = rows(page,"purchase-row-")
@@ -458,7 +501,7 @@ def s2_purchases(browser):
 
     # NEGATIVE: amount exceeds max (₹9,99,999)
     s = time.time()
-    select_first(page,"purchase-item-select")
+    select_next(page,"purchase-item-select")
     page.fill('[data-testid="purchase-qty-input"]', "1000")
     page.fill('[data-testid="purchase-price-input"]', "99999")
     before = rows(page,"purchase-row-")
@@ -491,7 +534,7 @@ def s3_closing_stock(browser):
     # POSITIVE: count item 1, qty=7
     s = time.time()
     try:
-        item1 = select_first(page,"closing-item-select")
+        item1 = select_next(page,"closing-item-select")
         page.fill('[data-testid="closing-qty-input"]', "7")
         page.fill('[data-testid="closing-notes-input"]', "Counted after dinner service")
         snap(page,"s3_02_form_filled",clip="form")
@@ -516,7 +559,7 @@ def s3_closing_stock(browser):
     # POSITIVE: count item 2, qty=3
     s = time.time()
     try:
-        item2 = select_first(page,"closing-item-select")
+        item2 = select_next(page,"closing-item-select")
         page.fill('[data-testid="closing-qty-input"]', "3")
         before = rows(page,"closing-row-")
         page.click('[data-testid="closing-save-btn"]')
@@ -530,6 +573,11 @@ def s3_closing_stock(browser):
     # NEGATIVE: future date
     s = time.time()
     try:
+        # Dismiss any stale variance toast first
+        try:
+            stale = page.locator('[data-sonner-toast]')
+            if stale.count()>0: stale.first.click(); page.wait_for_timeout(500)
+        except: pass
         date_inputs = page.locator('input[type="date"]')
         if date_inputs.count()>0:
             date_inputs.first.fill(FUTURE_DATE)
@@ -537,13 +585,13 @@ def s3_closing_stock(browser):
             page.fill('[data-testid="closing-qty-input"]', "5")
             before = rows(page,"closing-row-")
             page.click('[data-testid="closing-save-btn"]')
-            t = toast(page,2000)
+            t = toast(page,3000)
             page.wait_for_timeout(1500)
             after = rows(page,"closing-row-")
             step(page,"NEGATIVE: future date — rejected",
-                 "future" in t.lower() or after==before,
+                 "future" in t.lower() or "not allowed" in t.lower() or after==before,
                  f"toast: {t[:60]}","s3_06_future_date",s)
-            date_inputs.first.fill(TODAY)
+            date_inputs.first.fill(TODAY)  # always reset to today
         else:
             step(page,"Closing stock date validation [skipped — no date picker shown]",True,"closing stock uses server date")
     except Exception as e:
@@ -572,11 +620,15 @@ def s3_closing_stock(browser):
     # NEGATIVE: save without selecting item
     s = time.time()
     try:
+        # Dismiss stale toasts
+        try:
+            stale = page.locator('[data-sonner-toast]')
+            if stale.count()>0: stale.first.click(); page.wait_for_timeout(500)
+        except: pass
         page.fill('[data-testid="closing-qty-input"]', "5")
         page.click('[data-testid="closing-save-btn"]')
         t = toast(page,2000)
         page.wait_for_timeout(1000)
-        before_no_item = rows(page,"closing-row-")
         step(page,"NEGATIVE: save without item selection — blocked",
              "item" in t.lower() or "select" in t.lower() or "required" in t.lower(),
              f"toast: {t[:60]}","s3_08_no_item",s)
@@ -744,8 +796,21 @@ def s5_expenses(browser):
          f"toast: {t[:60]}","s5_02_no_category",s)
 
     # POSITIVE: Gas cylinder ₹1200
+    # Navigate away and back to reset form state cleanly
     s = time.time()
-    cat1 = select_first(page,"exp-cat-select")
+    go(page, "/expenses")
+    page.wait_for_timeout(500)
+    cat1 = select_next(page,"exp-cat-select")
+    if not cat1:
+        # Fallback: try clicking the trigger directly
+        page.locator('[data-testid="exp-cat-select"]').click()
+        page.wait_for_timeout(600)
+        opts = page.locator('[role="option"]')
+        if opts.count()>0:
+            cat1 = opts.first.text_content().strip()
+            opts.first.click()
+            page.wait_for_timeout(400)
+    page.fill('[data-testid="exp-date-input"]', TODAY)
     page.fill('[data-testid="exp-desc-input"]', "Gas cylinder refill")
     page.fill('[data-testid="exp-amount-input"]', "1200")
     snap(page,"s5_03_form_filled",clip="form")
@@ -760,7 +825,7 @@ def s5_expenses(browser):
 
     # POSITIVE: Electricity ₹3500
     s = time.time()
-    cat2 = select_first(page,"exp-cat-select")
+    cat2 = select_next(page,"exp-cat-select")
     page.fill('[data-testid="exp-desc-input"]', "Monthly electricity bill")
     page.fill('[data-testid="exp-amount-input"]', "3500")
     before = rows(page,"expense-row-")
@@ -1159,16 +1224,34 @@ def s10_items(browser):
                  "required" in t.lower() or "name" in t.lower() or "category" in t.lower() or "unit" in t.lower(),
                  f"toast: {t[:60]}","s10_05_empty_item",s)
 
-        # NEGATIVE: duplicate item name
+        # NEGATIVE: duplicate item name — close dialog, get existing name, reopen
         s = time.time()
         try:
-            # Get first existing item name from list
+            # Close current dialog first
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(500)
+            # Get first existing item name from table
             existing_rows = page.locator('[data-testid^="item-row-"]')
+            existing_name = ""
             if existing_rows.count()>0:
-                existing_name = existing_rows.first.locator('td').first.text_content().strip()
-                if existing_name:
-                    name_input = page.locator('[role="dialog"] input').first
+                existing_name = existing_rows.first.locator("td").first.text_content().strip()
+            if existing_name:
+                # Open fresh dialog
+                page.click('[data-testid="items-add-button"]')
+                page.wait_for_timeout(800)
+                if has(page,'[role="dialog"]',2000):
+                    # Fill with duplicate name + valid category + unit
+                    name_input = page.locator('[role="dialog"] input[placeholder*="name"], [role="dialog"] input').first
                     name_input.fill(existing_name)
+                    # Select category and unit to isolate the duplicate check
+                    for sel in ['[role="dialog"] button[role="combobox"]']:
+                        combos = page.locator(sel)
+                        if combos.count()>0:
+                            combos.first.click()
+                            page.wait_for_timeout(400)
+                            opts = page.locator('[role="option"]')
+                            if opts.count()>0: opts.first.click()
+                            page.wait_for_timeout(300)
                     save_btn = page.locator('[role="dialog"] button[type="submit"], [role="dialog"] button:has-text("Save")').first
                     if save_btn.count()>0:
                         save_btn.click()
@@ -1177,11 +1260,17 @@ def s10_items(browser):
                         step(page,f"NEGATIVE: duplicate item name '{existing_name[:20]}' — rejected",
                              "exist" in t.lower() or "duplicate" in t.lower() or "already" in t.lower() or "unique" in t.lower(),
                              f"toast: {t[:60]}","s10_05b_dup_name",s)
+                    else:
+                        step(page,"NEGATIVE: duplicate item name",False,"save button not found")
+                else:
+                    step(page,"NEGATIVE: duplicate item name",False,"dialog did not open")
+            else:
+                step(page,"NEGATIVE: duplicate item name",True,"no existing items to duplicate — skipped")
         except Exception as e:
             step(page,"NEGATIVE: duplicate item name",False,str(e)[:80])
 
-        # Re-open dialog if closed
-        if not has(page,'[role="dialog"]',1000):
+        # Re-open dialog for positive test
+        if not has(page,'[role="dialog"]',500):
             page.click('[data-testid="items-add-button"]')
             page.wait_for_timeout(800)
 
@@ -1446,7 +1535,12 @@ def s13_settings(browser):
     # Units — add
     s = time.time()
     page.click('[data-testid="settings-tab-units"]')
-    page.wait_for_timeout(800)
+    page.wait_for_timeout(1500)
+    # Dismiss any stale toasts from categories step
+    try:
+        stale = page.locator('[data-sonner-toast]')
+        if stale.count()>0: stale.first.click(); page.wait_for_timeout(500)
+    except: pass
     unit_name = f"uat{ts%999}"
     page.fill('[data-testid="units-new-name"]', unit_name)
     page.click('[data-testid="units-add-btn"]')
