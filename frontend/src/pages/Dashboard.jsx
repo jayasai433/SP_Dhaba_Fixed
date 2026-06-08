@@ -77,10 +77,12 @@ function KPI({ icon: Icon, label, value, hint, color = "orange", testid }) {
 
 // ── Chart axis formatters ─────────────────────────────────────────────────────
 const fmtTick = (v) => {
-  if (Math.abs(v) >= 10000000) return `₹${(v / 10000000).toFixed(1)}Cr`;
-  if (Math.abs(v) >= 100000)   return `₹${(v / 100000).toFixed(1)}L`;
-  if (Math.abs(v) >= 1000)     return `₹${(v / 1000).toFixed(0)}k`;
-  return `₹${v}`;
+  const abs  = Math.abs(v);
+  const sign = v < 0 ? "-" : "";
+  if (abs >= 10000000) return `${sign}₹${(abs / 10000000).toFixed(1)}Cr`;
+  if (abs >= 100000)   return `${sign}₹${(abs / 100000).toFixed(1)}L`;
+  if (abs >= 1000)     return `${sign}₹${(abs / 1000).toFixed(0)}k`;
+  return `${sign}₹${abs}`;
 };
 
 const fmtXDate = (d) => {
@@ -310,8 +312,9 @@ export default function Dashboard() {
                     dataKey="date"
                     tick={{ fontSize: 10, fill: "#64748B" }}
                     tickFormatter={fmtXDate}
-                    interval="preserveStartEnd"
-                    minTickGap={45}
+                    ticks={data.sales_trend
+                      .map((d, i) => i % 3 === 0 ? d.date : null)
+                      .filter(Boolean)}
                     tickLine={false}
                     axisLine={false}
                   />
