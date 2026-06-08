@@ -64,11 +64,25 @@ def snap(page, name, wait_ms=500, clip=None):
         return None
 
 def step(page, name, ok, detail="", ss=None, start=None, clip=None):
+    """On failure, auto-captures URL + visible error text for summary.txt."""
     dur  = round(time.time()-start, 1) if start else 0
     path = snap(page, ss, clip=clip) if ss else None
+    if not ok:
+        try:
+            diag = [f"url={page.url.split('/')[-1]}"]
+            for sel in ['[data-sonner-toast]','[role="alert"]','[data-testid*="error"]']:
+                els = page.locator(sel)
+                if els.count()>0:
+                    t = (els.first.text_content() or "").strip()
+                    if t: diag.append(f"screen='{t[:80]}'"); break
+            full_detail = f"{detail} || {' | '.join(diag)}" if detail else ' | '.join(diag)
+        except Exception:
+            full_detail = detail
+    else:
+        full_detail = detail
     RESULTS.append({"scenario":CURRENT,"name":name,
                     "status":"PASS" if ok else "FAIL",
-                    "detail":detail,"screenshot":path,"duration":dur})
+                    "detail":full_detail,"screenshot":path,"duration":dur})
     print(f"  {'✅' if ok else '❌'} {name}" + (f"  →  {detail}" if detail else "") + (f"  ({dur}s)" if dur else ""))
     return ok
 
@@ -1812,27 +1826,43 @@ def main():
     print(f"  Report : {report}")
     print(f"{'═'*70}\n")
 
-    # Write compact summary — failures only, small file easy to share
+    # Write compact diagnostic summary — failures only, easy to share
     summary_path = SS_DIR / "summary.txt"
     lines = [
-        f"SP Dhaba UAT Summary — {datetime.now().strftime('%Y-%m-%d %H:%M')}",
-        f"Target : {BASE_URL}",
-        f"Result : {passed}/{total} passed · {failed} failed · {round(passed/total*100) if total else 0}%",
-        "="*60,
+        "=" * 70,
+        f"SP Dhaba UAT Summary",
+        f"Target    : {BASE_URL}",
+        f"Date      : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+        f"Result    : {passed}/{total} passed · {failed} failed · {round(passed/total*100) if total else 0}%",
+        "=" * 70,
     ]
+
     if failed > 0:
-        lines.append(f"\nFAILED STEPS ({failed}):")
-        for r in RESULTS:
-            if r["status"] == "FAIL":
-                lines.append(f"  ❌ [{r['scenario']}]")
-                lines.append(f"     {r['name']}")
-                if r.get("detail"):
-                    lines.append(f"     Detail: {r['detail']}")
-                lines.append("")
+        lines.append(f"\n{'─'*70}")
+        lines.append(f"FAILED STEPS ({failed}) — with full diagnostic info:")
+        lines.append(f"{'─'*70}")
+        for i, r in enumerate([r for r in RESULTS if r["status"]=="FAIL"], 1):
+            lines.append(f"\n[{i}] SCENARIO : {r['scenario']}")
+            lines.append(f"    STEP     : {r['name']}")
+            lines.append(f"    DETAIL   : {r.get('detail','— no detail captured') or '— empty'}")
+            lines.append(f"    DURATION : {r.get('duration',0):.1f}s")
+            lines.append(f"    SS       : {Path(r['screenshot']).name if r.get('screenshot') else 'no screenshot'}")
+            # Try to get page state info from screenshot name
+            ss = r.get("screenshot","")
+            if ss:
+                lines.append(f"    HINT     : Check screenshot {Path(ss).name} for visual state")
     else:
-        lines.append("\n✅ ALL TESTS PASSED")
+        lines.append("\n✅ ALL TESTS PASSED — ready to merge to production")
+
+    lines.append(f"\n{'─'*70}")
+    lines.append("PASSED STEPS:")
+    lines.append(f"{'─'*70}")
+    for r in RESULTS:
+        if r["status"] == "PASS":
+            lines.append(f"  ✅ {r['name']}  →  {r.get('detail','') or 'ok'}")
+
     summary_path.write_text("\n".join(lines))
-    print(f"  Summary: {summary_path}  (share this instead of report.html)")
+    print(f"  Summary: {summary_path}  (paste this file here for fixes)")
 
     return 0 if failed==0 else 1
 
