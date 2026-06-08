@@ -131,10 +131,23 @@ export default function Dashboard() {
                       if (v >= 1000)   return `₹${(v / 1000).toFixed(0)}k`;
                       return `₹${v}`;
                     }}
+                    tickCount={6}
+                    allowDecimals={false}
                     width={55}
                   />
                   <Tooltip formatter={(v) => inr(v)} labelFormatter={fmtDate} />
-                  <Line type="monotone" dataKey="amount" stroke="#E65C00" strokeWidth={2.5} dot={{ r: 2, fill: "#E65C00" }} activeDot={{ r: 4 }} />
+                  <Line
+                    type="monotone"
+                    dataKey="amount"
+                    stroke="#E65C00"
+                    strokeWidth={2.5}
+                    dot={(props) => {
+                      const { cx, cy, value } = props;
+                      if (!value || value === 0) return null;
+                      return <circle key={`dot-${cx}`} cx={cx} cy={cy} r={3} fill="#E65C00" stroke="#fff" strokeWidth={1} />;
+                    }}
+                    activeDot={{ r: 4 }}
+                  />
                 </LineChart>
               </ResponsiveContainer>
             </div>
