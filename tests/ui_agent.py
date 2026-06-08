@@ -159,6 +159,14 @@ def select_first(page, testid):
         return text
     except: return None
 
+def submit_with_dup_check(page):
+    """Click submit and handle duplicate warning dialog if it appears."""
+    page.click('[data-testid="purchase-submit-button"]')
+    page.wait_for_timeout(800)
+    if has(page,'[data-testid="duplicate-warning-dialog"]',2000):
+        page.click('[data-testid="dup-confirm-btn"]')
+        page.wait_for_timeout(500)
+
 def select_next(page, testid):
     """
     Rotates through all available options on each call.
@@ -251,11 +259,16 @@ def s0_environment(browser):
     try:
         page.goto(f"{BASE_URL}/login", wait_until="domcontentloaded", timeout=TIMEOUT)
         page.wait_for_selector('[data-testid="login-page"]', timeout=15000)
-        page.wait_for_timeout(2000)
+        # Banner appears after /api/health call — poll up to 8s instead of fixed wait
         banner = ""
-        for sel in ["text=STAGING","text=Production","text=Unknown environment"]:
-            el = page.locator(sel)
-            if el.count()>0: banner = el.first.text_content().strip(); break
+        for _ in range(16):
+            for sel in ["text=STAGING","text=Production","text=Unknown environment"]:
+                el = page.locator(sel)
+                if el.count()>0:
+                    banner = el.first.text_content().strip()
+                    break
+            if banner: break
+            page.wait_for_timeout(500)
         step(page,"Environment banner visible",bool(banner),banner,"s0_01_banner",s)
         step(page,"Banner shows DB name","sp_dhaba" in banner.lower(),banner[:80],"s0_02_db",s)
     except Exception as e:
@@ -422,6 +435,9 @@ def s2_purchases(browser):
 
     before = rows(page,"purchase-row-")
     page.click('[data-testid="purchase-submit-button"]')
+    page.wait_for_timeout(800)
+    if has(page,'[data-testid="duplicate-warning-dialog"]',2000):
+        page.click('[data-testid="dup-confirm-btn"]'); page.wait_for_timeout(500)
     page.wait_for_timeout(1500)
     after = rows(page,"purchase-row-")
     step(page,"Purchase 2 saved — row in list",after>before,
@@ -435,6 +451,9 @@ def s2_purchases(browser):
     page.fill('[data-testid="purchase-price-input"]', "50")
     before = rows(page,"purchase-row-")
     page.click('[data-testid="purchase-submit-button"]')
+    page.wait_for_timeout(800)
+    if has(page,'[data-testid="duplicate-warning-dialog"]',2000):
+        page.click('[data-testid="dup-confirm-btn"]'); page.wait_for_timeout(500)
     t = toast(page)
     page.wait_for_timeout(1500)
     after = rows(page,"purchase-row-")
