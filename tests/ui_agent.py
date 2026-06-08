@@ -1811,6 +1811,29 @@ def main():
     print(f"  RESULT : {passed}/{total} passed · {failed} failed · {round(passed/total*100) if total else 0}%")
     print(f"  Report : {report}")
     print(f"{'═'*70}\n")
+
+    # Write compact summary — failures only, small file easy to share
+    summary_path = SS_DIR / "summary.txt"
+    lines = [
+        f"SP Dhaba UAT Summary — {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+        f"Target : {BASE_URL}",
+        f"Result : {passed}/{total} passed · {failed} failed · {round(passed/total*100) if total else 0}%",
+        "="*60,
+    ]
+    if failed > 0:
+        lines.append(f"\nFAILED STEPS ({failed}):")
+        for r in RESULTS:
+            if r["status"] == "FAIL":
+                lines.append(f"  ❌ [{r['scenario']}]")
+                lines.append(f"     {r['name']}")
+                if r.get("detail"):
+                    lines.append(f"     Detail: {r['detail']}")
+                lines.append("")
+    else:
+        lines.append("\n✅ ALL TESTS PASSED")
+    summary_path.write_text("\n".join(lines))
+    print(f"  Summary: {summary_path}  (share this instead of report.html)")
+
     return 0 if failed==0 else 1
 
 if __name__=="__main__":
