@@ -614,35 +614,62 @@ def s4_sales(browser):
          "0" in total,f"total: {total}","s4_02_zero_total",s,clip="form")
 
     # POSITIVE: fill valid sales
+    # Handle duplicate date — if today already has sales, click "Edit & Correct"
     s = time.time()
     page.fill('[data-testid="sales-lunch-input"]',  "5000")
     page.fill('[data-testid="sales-dinner-input"]', "4000")
     page.fill('[data-testid="sales-other-input"]',  "500")
-    page.wait_for_timeout(400)
+    page.wait_for_timeout(800)  # wait for duplicate check API call
     total = txt(page,"sales-total-preview")
     step(page,"POSITIVE: ₹5000+₹4000+₹500=₹9,500 preview",
          "9,500" in total or "9500" in total,
          f"Preview: {total}","s4_03_total_preview",s,clip="form")
 
-    before = rows(page,"sales-row-")
-    page.click('[data-testid="sales-submit-button"]')
-    t = toast(page)
-    snap(page,"s4_03b_toast",wait_ms=200,clip="toast")
-    page.wait_for_timeout(1500)
-    after = rows(page,"sales-row-")
-    step(page,"POSITIVE: sales entry saved",
-         after>before or "success" in t.lower() or "saved" in t.lower(),
-         f"rows {before}→{after} | toast: {t[:40]}","s4_04_saved",s,clip="table")
-
-    # NEGATIVE: duplicate date shows warning
+    # Check if duplicate warning shown — if so click Edit & Correct
     s = time.time()
-    page.fill('[data-testid="sales-lunch-input"]',  "1000")
+    dup_warn = has(page,'[data-testid="duplicate-warning"]',2000)
+    if dup_warn:
+        # Click "Edit & Correct" to enable the submit button
+        edit_btn = page.locator('button:has-text("Edit & Correct"), button:has-text("Edit")')
+        if edit_btn.count()>0:
+            edit_btn.first.click()
+            page.wait_for_timeout(500)
+
+    # Now submit button should be enabled
+    submit_btn = page.locator('[data-testid="sales-submit-button"]')
+    is_enabled = not submit_btn.is_disabled()
+    before = rows(page,"sales-row-")
+
+    if is_enabled:
+        submit_btn.click()
+        t = toast(page)
+        snap(page,"s4_03b_toast",wait_ms=200,clip="toast")
+        page.wait_for_timeout(1500)
+        after = rows(page,"sales-row-")
+        step(page,"POSITIVE: sales entry saved (new or updated)",
+             after>before or "success" in t.lower() or "saved" in t.lower() or "updated" in t.lower(),
+             f"rows {before}→{after} | dup={dup_warn} | toast: {t[:40]}","s4_04_saved",s,clip="table")
+    else:
+        step(page,"POSITIVE: sales entry saved",False,
+             f"submit button still disabled | dup={dup_warn}","s4_04_disabled",s,clip="form")
+
+    # NEGATIVE: duplicate date shows warning and disables submit
+    s = time.time()
+    # Sales for today already exists from above — just check warning is shown
+    page.fill('[data-testid="sales-lunch-input"]', "1000")
     page.fill('[data-testid="sales-dinner-input"]', "1000")
-    page.fill('[data-testid="sales-other-input"]',  "0")
+    page.fill('[data-testid="sales-other-input"]', "0")
     page.wait_for_timeout(800)
     dup_warning = has(page,'[data-testid="duplicate-warning"]',3000)
-    step(page,"NEGATIVE: duplicate date shows warning banner",
-         dup_warning,"","s4_05_duplicate_warning",s,clip="form")
+    # Also verify button is disabled when duplicate exists and not editing
+    edit_cancel = page.locator('button:has-text("Cancel")')
+    if edit_cancel.count()>0:
+        edit_cancel.first.click()  # exit edit mode first
+        page.wait_for_timeout(500)
+    btn_disabled = page.locator('[data-testid="sales-submit-button"]').is_disabled()
+    step(page,"NEGATIVE: duplicate date — warning shown + submit disabled",
+         dup_warning and btn_disabled,
+         f"warning={dup_warning} btn_disabled={btn_disabled}","s4_05_duplicate_warning",s,clip="form")
 
     # POSITIVE: add notes to sales
     s = time.time()
