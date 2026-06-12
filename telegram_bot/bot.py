@@ -66,7 +66,7 @@ async def get_token() -> str:
         return _token
 
 async def api(method: str, path: str, **kwargs) -> dict:
-    """Make authenticated API call."""
+    """Make authenticated API call with proper error handling."""
     token = await get_token()
     headers = {"Authorization": f"Bearer {token}"}
     async with httpx.AsyncClient(timeout=15) as client:
@@ -74,8 +74,17 @@ async def api(method: str, path: str, **kwargs) -> dict:
             f"{BACKEND_URL}/api{path}",
             headers=headers, **kwargs
         )
-        resp.raise_for_status()
-        return resp.json()
+        if not resp.is_success:
+            # Try to get JSON error detail, fallback to status text
+            try:
+                detail = resp.json().get("detail", resp.text[:100])
+            except Exception:
+                detail = f"HTTP {resp.status_code}"
+            raise httpx.HTTPStatusError(detail, request=resp.request, response=resp)
+        try:
+            return resp.json()
+        except Exception:
+            raise ValueError(f"Non-JSON response from {path}: {resp.text[:100]}")
 
 # ── Security guard ────────────────────────────────────────────────────────────
 def authorized(update: Update) -> bool:
@@ -532,7 +541,7 @@ async def sales_notes(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def expense_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not authorized(update): return await reject(update)
     try:
-        settings = await api("get", "/settings/categories")
+        settings = await api("get", "/expense-categories")
         cats = [c["name"] for c in settings] if isinstance(settings, list) else []
         if cats:
             keyboard = [cats[i:i+2] for i in range(0, len(cats), 2)]
