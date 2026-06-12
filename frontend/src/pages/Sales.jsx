@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
 import { inr, fmtDate, todayIST } from "@/lib/format";
-import { IndianRupee, AlertTriangle } from "lucide-react";
+import { IndianRupee, AlertTriangle, CheckCircle2, Info } from "lucide-react";
 import { useSave } from "@/hooks/useSave";
 
 export default function Sales() {
@@ -119,7 +119,23 @@ export default function Sales() {
 
       <Card className="rounded-2xl border-orange-900/10 shadow-sm">
         <CardContent className="p-5">
-          <h3 className="font-display text-lg font-semibold text-slate-900 mb-4">Record Sales</h3>
+          <h3 className="font-display text-lg font-semibold text-slate-900 mb-3">Record Sales</h3>
+
+          {/* One-per-day notice — uses design system warning colors */}
+          <div
+            className="flex items-start gap-2 mb-4 p-3 rounded-xl border text-xs"
+            style={{ background: "#FFFDE7", borderColor: "#F9A825", color: "#5D4037" }}
+            data-testid="sales-once-per-day-notice"
+          >
+            <Info size={14} className="flex-shrink-0 mt-0.5" style={{ color: "#F57F17" }} />
+            <span>
+              Sales can be entered <strong>once per day only</strong>.{" "}
+              {canEdit
+                ? 'As admin, use "Edit & Correct" if a correction is needed.'
+                : "Contact admin if a correction is needed after saving."}
+            </span>
+          </div>
+
           <form onSubmit={submit} className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
             <div className="md:col-span-3">
               <Label className="text-sm mb-1.5 block">Date</Label>
@@ -148,29 +164,63 @@ export default function Sales() {
               <Textarea data-testid="sales-notes-input" value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className="bg-white" />
             </div>
             {duplicate && !editing && (
-              <div className="md:col-span-12 p-3 rounded-xl bg-amber-50 border border-amber-300 text-sm text-amber-900 flex items-center gap-2 flex-wrap" data-testid="duplicate-warning">
-                <AlertTriangle size={16} />
-                Sales already recorded for <b>{fmtDate(date)}</b> ({inr(duplicate.total_amount)}).
-                {canEdit && (
-                  <button type="button" onClick={() => {
-                    setLunch(String(duplicate.lunch_amount || 0));
-                    setDinner(String(duplicate.dinner_amount || 0));
-                    setOther(String(duplicate.other_amount || 0));
-                    setNotes(duplicate.notes || "");
-                    setEditing(true);
-                  }} className="ml-2 underline text-orange-700 font-medium">
-                    Edit & Correct
-                  </button>
+              <div className="md:col-span-12" data-testid="duplicate-warning">
+                {canEdit ? (
+                  /* Admin — can edit the entry */
+                  <div
+                    className="p-3 rounded-xl border text-sm flex items-center gap-2 flex-wrap"
+                    style={{ background: "#FFFDE7", borderColor: "#F9A825", color: "#5D4037" }}
+                  >
+                    <AlertTriangle size={16} style={{ color: "#F57F17" }} />
+                    Sales already recorded for <strong>{fmtDate(date)}</strong> — Total:{" "}
+                    <strong>{inr(duplicate.total_amount)}</strong>.
+                    <button type="button" onClick={() => {
+                      setLunch(String(duplicate.lunch_amount || 0));
+                      setDinner(String(duplicate.dinner_amount || 0));
+                      setOther(String(duplicate.other_amount || 0));
+                      setNotes(duplicate.notes || "");
+                      setEditing(true);
+                    }} className="ml-2 underline text-orange-700 font-medium">
+                      Edit & Correct
+                    </button>
+                  </div>
+                ) : (
+                  /* Staff — read-only, show what was saved */
+                  <div
+                    className="p-3 rounded-xl border text-sm flex items-start gap-2"
+                    style={{ background: "#E8F5E9", borderColor: "#A5D6A7", color: "#2E7D32" }}
+                    data-testid="sales-already-saved"
+                  >
+                    <CheckCircle2 size={16} className="flex-shrink-0 mt-0.5" />
+                    <span>
+                      Sales for <strong>{fmtDate(date)}</strong> already saved —{" "}
+                      Lunch: <strong>{inr(duplicate.lunch_amount)}</strong>{" · "}
+                      Dinner: <strong>{inr(duplicate.dinner_amount)}</strong>{" · "}
+                      Other: <strong>{inr(duplicate.other_amount)}</strong>{" · "}
+                      Total: <strong>{inr(duplicate.total_amount)}</strong>.{" "}
+                      <span style={{ color: "#1B5E20" }}>Contact admin for corrections.</span>
+                    </span>
+                  </div>
                 )}
-                {!canEdit && " Choose another date."}
               </div>
             )}
             <div className="md:col-span-12">
-              <div className="flex gap-2">
-                <Button type="submit" onClick={editing ? updateSales : undefined} disabled={saving || saving2 || (!!duplicate && !editing)} data-testid="sales-submit-button"
-                  className="rounded-full bg-orange-600 hover:bg-orange-700 px-6 active:scale-95">
-                  {(saving || saving2) ? "Saving..." : editing ? "Update Sales" : "Save Sales"}
-                </Button>
+              <div className="flex gap-2 items-center">
+                <div title={duplicate && !editing ? "Sales already entered for today — one entry per day" : ""}>
+                  <Button type="submit" onClick={editing ? updateSales : undefined} disabled={saving || saving2 || (!!duplicate && !editing)} data-testid="sales-submit-button"
+                    className="rounded-full bg-orange-600 hover:bg-orange-700 px-6 active:scale-95">
+                    {(saving || saving2) ? "Saving..." : editing ? "Update Sales" : "Save Sales"}
+                  </Button>
+                </div>
+                {duplicate && !editing && (
+                  <span
+                    className="text-xs"
+                    style={{ color: "#64748B" }}
+                    data-testid="sales-one-per-day-hint"
+                  >
+                    ⓘ One entry per day
+                  </span>
+                )}
                 {editing && (
                   <Button type="button" variant="outline" onClick={() => { setEditing(false); setLunch(""); setDinner(""); setOther(""); setNotes(""); }}
                     className="rounded-full border-orange-200 text-orange-700">
