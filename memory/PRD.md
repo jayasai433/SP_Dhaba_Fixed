@@ -36,6 +36,13 @@ Production-ready, mobile-first lightweight ERP for an Indian roadside dhaba with
 - Iteration 2: Frontend re-test pass
 - Iteration 3 (Phase 2): **28/28 new backend tests pass, frontend smoke 100%**
 
+## UX Audit (12-Feb-2026) — see [`UX_REVIEW_PRD.md`](./UX_REVIEW_PRD.md)
+Product score: **5.5 / 10**. Three P0 production-credibility blockers identified:
+- P0-1: Remove "Unknown environment / Railway" warning banner from production UI.
+- P0-2: Fix dashboard date (currently shows `12-Jun-2026` — TZ/clock issue corrupts every "Today" KPI).
+- P0-3: "PROFIT" badge incorrectly shown on ₹0 P&L (Today + Overall).
+Full PRD with P0/P1/P2/P3 backlog, acceptance criteria, and 4-week rollout plan in `UX_REVIEW_PRD.md`.
+
 ## Prioritized Backlog
 **P1**
 - WhatsApp real-sending: user provides `WHATSAPP_ACCESS_TOKEN` + `WHATSAPP_PHONE_NUMBER_ID` → flip from LOG-ONLY to live
