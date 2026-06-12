@@ -671,7 +671,7 @@ def main():
     app.add_handler(MessageHandler(filters.COMMAND, unknown))
 
     logger.info("SP Dhaba Bot starting...")
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    app.run_polling()
 
 if __name__ == "__main__":
     main()
