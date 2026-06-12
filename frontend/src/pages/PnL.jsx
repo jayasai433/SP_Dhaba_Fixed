@@ -141,13 +141,30 @@ export default function PnL() {
           <h3 className="font-display text-lg font-semibold text-slate-900 mb-3">Daily Net P&L — Last 30 Days</h3>
           <div className="h-64" style={{ minHeight: 240 }}>
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={trend}>
+              <LineChart data={trend} margin={{ left: 10, right: 10, bottom: 5 }}>
                 <CartesianGrid stroke="#F0E1D3" strokeDasharray="3 3" />
-                <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#64748B" }} tickFormatter={(d) => d.slice(5)} />
-                <YAxis tick={{ fontSize: 11, fill: "#64748B" }} tickFormatter={(v) => `₹${v}`} />
+                <XAxis
+                  dataKey="date"
+                  tick={{ fontSize: 10, fill: "#64748B" }}
+                  tickFormatter={(d) => {
+                    const dt = new Date(d + "T00:00:00");
+                    return dt.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+                  }}
+                  interval="preserveStartEnd"
+                  minTickGap={40}
+                />
+                <YAxis
+                  tick={{ fontSize: 10, fill: "#64748B" }}
+                  tickFormatter={(v) => {
+                    if (v >= 100000) return `₹${(v / 100000).toFixed(1)}L`;
+                    if (v >= 1000)   return `₹${(v / 1000).toFixed(0)}k`;
+                    return `₹${v}`;
+                  }}
+                  width={55}
+                />
                 <Tooltip formatter={(v) => inr(v)} labelFormatter={fmtDate} />
                 <ReferenceLine y={0} stroke="#94a3b8" strokeDasharray="3 3" />
-                <Line type="monotone" dataKey="net" stroke="#E65C00" strokeWidth={2.5} dot={false} />
+                <Line type="monotone" dataKey="net" stroke="#E65C00" strokeWidth={2.5} dot={{ r: 2, fill: "#E65C00" }} activeDot={{ r: 4 }} />
               </LineChart>
             </ResponsiveContainer>
           </div>
