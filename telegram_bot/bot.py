@@ -253,7 +253,9 @@ async def stock_item(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return STOCK_ITEM
     ctx.user_data["stock_item"] = item
     await update.message.reply_text(
-        f"How many *{item['name']}* ({item['unit']}) are left on the shelf?",
+        f"How many *{item['unit']}* of *{item['name']}* are left on the shelf right now?
+"
+        f"_(Count what you see and enter the number, e.g. 7)_",
         reply_markup=ReplyKeyboardRemove(), parse_mode="Markdown"
     )
     return STOCK_QTY
@@ -378,7 +380,9 @@ async def pur_item(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return PUR_ITEM
     ctx.user_data["pur_item"] = item
     await update.message.reply_text(
-        f"How many *{item['unit']}* of {item['name']} did you buy?",
+        f"How many *{item['unit']}* of *{item['name']}* did you buy?
+"
+        f"_(Enter a number, e.g. 10)_",
         reply_markup=ReplyKeyboardRemove(), parse_mode="Markdown"
     )
     return PUR_QTY
@@ -390,7 +394,12 @@ async def pur_qty(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Must be greater than 0:")
             return PUR_QTY
         ctx.user_data["pur_qty"] = qty
-        await update.message.reply_text("Price per unit (₹)?")
+        await update.message.reply_text(
+            f"Price per *{ctx.user_data['pur_item']['unit']}* in ₹?
+"
+            f"_(Enter the rate, e.g. 200 means ₹200 per {ctx.user_data['pur_item']['unit']})_",
+            parse_mode="Markdown"
+        )
         return PUR_PRICE
     except ValueError:
         await update.message.reply_text("❌ Enter a number:")
