@@ -150,15 +150,21 @@ export default function PnL() {
                     const dt = new Date(d + "T00:00:00");
                     return dt.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
                   }}
-                  interval="preserveStartEnd"
-                  minTickGap={40}
+                  ticks={trend
+                    .map((d, i) => i % 3 === 0 ? d.date : null)
+                    .filter(Boolean)}
+                  tickLine={false}
+                  axisLine={false}
                 />
                 <YAxis
                   tick={{ fontSize: 10, fill: "#64748B" }}
                   tickFormatter={(v) => {
-                    if (v >= 100000) return `₹${(v / 100000).toFixed(1)}L`;
-                    if (v >= 1000)   return `₹${(v / 1000).toFixed(0)}k`;
-                    return `₹${v}`;
+                    const abs  = Math.abs(v);
+                    const sign = v < 0 ? "-" : "";
+                    if (abs >= 10000000) return `${sign}₹${(abs / 10000000).toFixed(1)}Cr`;
+                    if (abs >= 100000)   return `${sign}₹${(abs / 100000).toFixed(1)}L`;
+                    if (abs >= 1000)     return `${sign}₹${(abs / 1000).toFixed(0)}k`;
+                    return `${sign}₹${abs}`;
                   }}
                   tickCount={6}
                   allowDecimals={false}
