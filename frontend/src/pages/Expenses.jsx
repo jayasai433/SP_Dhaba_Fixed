@@ -12,6 +12,8 @@ import { Plus, Receipt, Wallet, Ban } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSave } from "@/hooks/useSave";
 import { useDateFilter } from "@/hooks/useDateFilter";
+import { Skeleton } from "@/components/ui/skeleton";
+import { SKELETON_KEYS } from "@/lib/skeletons";
 import DuplicateWarningDialog from "@/components/DuplicateWarningDialog";
 import VoidDialog from "@/components/VoidDialog";
 
@@ -19,7 +21,7 @@ export default function Expenses() {
   const { user } = useAuth();
   const canAdd = ["admin", "staff"].includes(user.role);
   const [cats, setCats] = useState([]);
-  const [rows, setRows] = useState([]);
+  const [rows, setRows] = useState(null);
   const [date, setDate] = useState(todayIST());
   const [cat, setCat] = useState("");
   const [desc, setDesc] = useState("");
@@ -60,6 +62,7 @@ export default function Expenses() {
   };
 
   const { dayTotal, weekTotal, monthTotal } = useMemo(() => {
+    if (!rows) return { dayTotal: 0, weekTotal: 0, monthTotal: 0 };
     const today = todayIST();
     const start7 = new Date(today + "T00:00:00"); start7.setDate(start7.getDate() - 6);
     const monthStart = today.slice(0, 7) + "-01";
@@ -169,10 +172,13 @@ export default function Expenses() {
               <Input type="date" data-testid="exp-filter-end" value={end} onChange={(e) => setEnd(e.target.value)} className="h-10 bg-white" />
             </div>
           </div>
-          {rows.length === 0 ? (
-            <div className="text-center py-10 text-slate-500">
+          {rows === null ? (
+            <div className="space-y-2">{SKELETON_KEYS.slice(0, 5).map((k) => <Skeleton key={k} className="h-10 rounded-lg" />)}</div>
+          ) : rows.length === 0 ? (
+            <div className="text-center py-10 text-slate-500" data-testid="expenses-empty-state">
               <Wallet className="mx-auto text-orange-300 mb-2" size={36} />
-              <p>No expense records.</p>
+              <p className="font-medium">No expense records</p>
+              <p className="text-sm mt-1">Log your first expense to start tracking operating cost.</p>
             </div>
           ) : (
             <div className="overflow-x-auto">

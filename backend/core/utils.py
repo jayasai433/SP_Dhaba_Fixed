@@ -1,14 +1,21 @@
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date as _date
 from collections import defaultdict
 import time as _time
+import pytz as _pytz
 from fastapi import HTTPException
 
 # ── DateTime helpers ──────────────────────────────────────────────────────
+_IST = _pytz.timezone("Asia/Kolkata")
+
 def now_utc() -> datetime:
     return datetime.now(timezone.utc)
 
 def iso(dt: datetime) -> str:
     return dt.astimezone(timezone.utc).isoformat()
+
+def today_ist() -> _date:
+    """Today's date in Asia/Kolkata. Use this everywhere instead of date.today()."""
+    return datetime.now(_IST).date()
 
 # ── Staff data isolation ──────────────────────────────────────────────────
 def _can_view_all(user: dict) -> bool:

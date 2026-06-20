@@ -9,8 +9,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
 import { inr, fmtDate, fmtTimestamp, todayIST } from "@/lib/format";
-import { Plus, Receipt, Ban } from "lucide-react";
+import { Plus, Receipt, Ban, Download } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { cn } from "@/lib/utils";
+import { Skeleton } from "@/components/ui/skeleton";
+import { SKELETON_KEYS } from "@/lib/skeletons";
 import { useSave } from "@/hooks/useSave";
 import { useDateFilter } from "@/hooks/useDateFilter";
 import DuplicateWarningDialog from "@/components/DuplicateWarningDialog";
@@ -21,7 +24,7 @@ export default function Purchases() {
   const { user } = useAuth();
   const canAdd = ["admin", "staff"].includes(user.role);
   const [items, setItems] = useState([]);
-  const [rows, setRows] = useState([]);
+  const [rows, setRows] = useState(null);
   const [filterItem, setFilterItem] = useState("all");
   const { start, end, setStart, setEnd, dateParams } = useDateFilter();
   const [voidingId, setVoidingId] = useState(null);
@@ -31,6 +34,7 @@ export default function Purchases() {
   const [date, setDate] = useState(todayIST());
   const [qty, setQty] = useState("");
   const [price, setPrice] = useState("");
+  const [errors, setErrors] = useState({});
 
   useEffect(() => { api.get("/items").then(({ data }) => setItems(data)).catch((err) => console.error(err)); }, []);
   const load = useCallback(() => {
@@ -41,20 +45,26 @@ export default function Purchases() {
 
   const selectedItem = items.find((i) => i.id === itemId);
   const total = (parseFloat(qty || 0) * parseFloat(price || 0)) || 0;
-  const runningTotal = rows.reduce((a, b) => a + (b.total_cost || 0), 0);
+  const runningTotal = (rows || []).reduce((a, b) => a + (b.total_cost || 0), 0);
 
   const { save, saving, dupDialog, confirmDuplicate, cancelDuplicate } = useSave(
     () => api.post("/purchases", {
       item_id: itemId, date, quantity: parseFloat(qty), price_per_unit: parseFloat(price),
     }),
-    { successMessage: "Purchase saved", onSuccess: () => { setQty(""); setPrice(""); load(); } }
+    { successMessage: "Purchase saved", onSuccess: () => { setQty(""); setPrice(""); setErrors({}); load(); } }
   );
 
   const submit = (e) => {
     e.preventDefault();
-    if (!itemId) return toast.error("Please select an item");
-    if (!(parseFloat(qty) > 0)) return toast.error("Quantity must be greater than 0");
-    if (!(parseFloat(price) >= 0)) return toast.error("Price cannot be negative");
+    const next = {};
+    if (!itemId) next.item = "Please select an item";
+    if (!(parseFloat(qty) > 0)) next.qty = "Quantity must be greater than 0";
+    if (!price || !(parseFloat(price) > 0)) next.price = "Price must be greater than ₹0";
+    setErrors(next);
+    if (Object.keys(next).length) {
+      toast.error(Object.values(next)[0]);
+      return;
+    }
     save();
   };
 
@@ -91,9 +101,26 @@ export default function Purchases() {
           <div className="text-xs font-semibold tracking-widest uppercase text-orange-700">Inventory</div>
           <h1 className="font-display text-3xl sm:text-4xl font-bold text-slate-900">Purchases</h1>
         </div>
-        <div className="bg-white rounded-2xl border border-orange-900/10 px-5 py-3 shadow-sm">
-          <div className="text-xs text-slate-500 uppercase tracking-wider">Running total (filtered)</div>
-          <div className="font-display font-bold text-xl text-orange-700 tabular-nums" data-testid="purchases-running-total">{inr(runningTotal)}</div>
+        <div className="flex items-center gap-3 flex-wrap">
+          <Button onClick={async () => {
+            try {
+              const { data, headers } = await api.get("/export/purchases.csv", { params: dateParams, responseType: "blob" });
+              const url = window.URL.createObjectURL(new Blob([data], { type: "text/csv" }));
+              const a = document.createElement("a");
+              a.href = url;
+              const cd = headers["content-disposition"] || "";
+              const m = cd.match(/filename="?([^"]+)"?/);
+              a.download = m ? m[1] : "purchases.csv";
+              document.body.appendChild(a); a.click(); a.remove();
+              window.URL.revokeObjectURL(url);
+            } catch { toast.error("Failed to export CSV"); }
+          }} variant="outline" data-testid="purchases-export-csv-button" className="rounded-full border-orange-300 text-orange-700">
+            <Download size={16} className="mr-1" />Export CSV
+          </Button>
+          <div className="bg-white rounded-2xl border border-orange-900/10 px-5 py-3 shadow-sm">
+            <div className="text-xs text-slate-500 uppercase tracking-wider">Running total (filtered)</div>
+            <div className="font-display font-bold text-xl text-orange-700 tabular-nums" data-testid="purchases-running-total">{inr(runningTotal)}</div>
+          </div>
         </div>
       </div>
 
@@ -125,13 +152,19 @@ export default function Purchases() {
               </div>
               <div className="md:col-span-2">
                 <Label className="text-sm mb-1.5 block">Quantity {selectedItem && `(${selectedItem.unit})`}</Label>
-                <Input type="number" step="0.01" min="0" data-testid="purchase-qty-input" value={qty} onChange={(e) => setQty(e.target.value)} placeholder="0" className="h-11 bg-white tabular-nums" />
-                <div className="h-4" />
+                <Input type="number" step="0.01" min="0" data-testid="purchase-qty-input" value={qty}
+                  onChange={(e) => { setQty(e.target.value); if (errors.qty) setErrors(p => ({...p, qty: undefined})); }}
+                  placeholder="0"
+                  className={cn("h-11 bg-white tabular-nums", errors.qty && "border-red-500 focus-visible:ring-red-500")} />
+                <div className="h-4 text-[11px] text-red-600 mt-0.5" data-testid="purchase-qty-error">{errors.qty || ""}</div>
               </div>
               <div className="md:col-span-2">
                 <Label className="text-sm mb-1.5 block">Price (₹ per unit)</Label>
-                <Input type="number" step="0.01" min="0" data-testid="purchase-price-input" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="0.00" className="h-11 bg-white tabular-nums" />
-                <div className="h-4" />
+                <Input type="number" step="0.01" min="0.01" data-testid="purchase-price-input" value={price}
+                  onChange={(e) => { setPrice(e.target.value); if (errors.price) setErrors(p => ({...p, price: undefined})); }}
+                  placeholder="0.00"
+                  className={cn("h-11 bg-white tabular-nums", errors.price && "border-red-500 focus-visible:ring-red-500")} />
+                <div className="h-4 text-[11px] text-red-600 mt-0.5" data-testid="purchase-price-error">{errors.price || ""}</div>
               </div>
               <div className="md:col-span-2">
                 <Label className="text-sm mb-1.5 block">Total</Label>
@@ -172,10 +205,13 @@ export default function Purchases() {
             </div>
           </div>
 
-          {rows.length === 0 ? (
-            <div className="text-center py-10 text-slate-500">
+          {rows === null ? (
+            <div className="space-y-2">{SKELETON_KEYS.slice(0, 5).map((k) => <Skeleton key={k} className="h-10 rounded-lg" />)}</div>
+          ) : rows.length === 0 ? (
+            <div className="text-center py-10 text-slate-500" data-testid="purchases-empty-state">
               <Receipt className="mx-auto text-orange-300 mb-2" size={36} />
-              <p>No purchase records yet.</p>
+              <p className="font-medium">No purchase records yet</p>
+              <p className="text-sm mt-1">Record your first purchase above — stock and P&L update live.</p>
             </div>
           ) : (
             <div className="overflow-x-auto">

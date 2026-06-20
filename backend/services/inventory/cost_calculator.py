@@ -17,6 +17,7 @@ from typing import List, Dict
 from dataclasses import dataclass
 
 from core.db import db
+from core.utils import today_ist
 
 
 @dataclass
@@ -157,7 +158,7 @@ class IngredientCostCalculator:
         Daily ingredient cost over N days — for trend chart.
         Returns: [{date, total_cost, potential_savings}]
         """
-        end_dt   = date.today()
+        end_dt   = today_ist()
         start_dt = end_dt - timedelta(days=days - 1)
 
         pipeline = [

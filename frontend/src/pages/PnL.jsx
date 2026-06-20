@@ -59,6 +59,22 @@ export default function PnL() {
     }
   };
 
+  const downloadCsv = async () => {
+    try {
+      const { data, headers } = await api.get("/export/pnl.csv", { params: { period }, responseType: "blob" });
+      const url = window.URL.createObjectURL(new Blob([data], { type: "text/csv" }));
+      const a = document.createElement("a");
+      a.href = url;
+      const cd = headers["content-disposition"] || "";
+      const m = cd.match(/filename="?([^"]+)"?/);
+      a.download = m ? m[1] : `pnl-${period}.csv`;
+      document.body.appendChild(a); a.click(); a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      toast.error("Failed to export CSV. Please try again.");
+    }
+  };
+
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-slate-500">
@@ -85,9 +101,14 @@ export default function PnL() {
             {pnl.start ? `${fmtDate(pnl.start)} → ${fmtDate(pnl.end)}` : "All time"}
           </p>
         </div>
-        <Button onClick={download} data-testid="pnl-export-button" className="rounded-full bg-orange-600 hover:bg-orange-700">
-          <Download size={16} className="mr-1" />Export PDF
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={downloadCsv} data-testid="pnl-export-csv-button" variant="outline" className="rounded-full border-orange-300 text-orange-700">
+            <Download size={16} className="mr-1" />CSV
+          </Button>
+          <Button onClick={download} data-testid="pnl-export-button" className="rounded-full bg-orange-600 hover:bg-orange-700">
+            <Download size={16} className="mr-1" />Export PDF
+          </Button>
+        </div>
       </div>
 
       <Tabs value={period} onValueChange={setPeriod}>

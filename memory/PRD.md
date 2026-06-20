@@ -16,6 +16,25 @@ Production-ready, mobile-first lightweight ERP for an Indian roadside dhaba with
 - **Viewer (Display)**: Read-only Dashboard, P&L, Live Stock, Alerts, Display Mode
 
 ## Implementation Log
+### Sprint — 12-Feb-2026 (UX review batches 1-3)
+**Batch 1 — Fix what's broken:**
+- P&L badge logic corrected (Dashboard KPI): ₹0 with no transactions → no badge; ₹0 with transactions → neutral "Break-Even"; > 0 → Profit; < 0 → Loss. Applied to Today P&L + Overall P&L cards.
+- IST date helper `today_ist()` added to `core/utils.py`; replaced 3 `date.today()` server-local calls in inventory services (closing_stock_service, analytics, cost_calculator).
+- Zero-price purchases now rejected: backend validators in both `server.py` and `models/transaction.py` use `Field(gt=0)`; frontend Purchases form adds inline red-bordered field + per-field error.
+- Removed redundant always-on "once-per-day" info banner on Sales page — kept only the contextual duplicate/already-saved banner.
+- 5 deterministic P&L scenario tests added at `/app/backend/tests/test_pnl_scenarios.py` (profit / loss / break-even / no-data / revenue-only). All 5 pass.
+
+**Batch 2 — Mobile + polish:**
+- Fixed the "Unknown environment / Railway" red banner: added `/api/health` to active `server.py`, set `ENVIRONMENT="staging"` in `backend/.env`. Banner now correctly shows the yellow STAGING bar.
+- Skeleton loaders + improved empty-state cards (icon + heading + helper line) added to Sales, Purchases, Expenses, Wastage. `null` sentinel pattern to distinguish loading vs empty.
+- TLS auto-detection in `core/db.py` (was hard-coded `tls=True` — broke local Mongo). Now activates TLS only for `mongodb+srv://` or `?tls=true` URIs.
+
+**Batch 3 — Operational features:**
+- **Wastage Log** (new): `/api/wastage` GET/POST + `/api/wastage/summary` + `/api/wastage/reasons`. New `Wastage` page with 4 KPI cards (today/week/month/all-time) + form + history table. New `/wastage` route + nav link. Cost auto-estimated from last purchase price.
+- **CSV exports** (new): `/api/export/sales.csv`, `/api/export/purchases.csv`, `/api/export/pnl.csv`. UTF-8 BOM-prefixed for Excel compatibility. Export buttons added to Sales, Purchases, and PnL pages.
+- **Per-item reorder threshold**: existing `Item.reorder_level` + LiveStock per-item card colour/status already flag below-threshold items. Verified.
+- **Suppliers** (new): full CRUD at `/api/suppliers`. New `SupplierPane` Settings tab with add/edit/remove/deactivate, soft-delete via `is_active`.
+
 ### MVP — 31-May-2026
 - JWT auth + 3 seeded accounts (admin@spdhaba.com, lokesh@spdhaba.com, display@spdhaba.com)
 - Item Master, Purchases, Daily Usage, Sales, Live Stock (color-coded), Alerts, Dashboard, Display Mode, Settings (Business, Categories, Units, Users, Reorder Bulk Edit)

@@ -3,6 +3,7 @@ import BusinessProfilePane from "@/pages/settings/BusinessProfilePane";
 import NamedListPane from "@/pages/settings/NamedListPane";
 import UsersPane from "@/pages/settings/UsersPane";
 import StaffPane from "@/pages/settings/StaffPane";
+import SupplierPane from "@/pages/settings/SupplierPane";
 import WhatsAppPane from "@/pages/settings/WhatsAppPane";
 import ReorderPane from "@/pages/settings/ReorderPane";
 
@@ -13,6 +14,7 @@ const TABS = [
   ["units", "Units"],
   ["users", "Users"],
   ["staff", "Payroll Staff"],
+  ["suppliers", "Suppliers"],
   ["whatsapp", "WhatsApp"],
   ["reorder", "Reorder Levels"],
 ];
@@ -39,6 +41,7 @@ export default function Settings() {
         <TabsContent value="units"><NamedListPane apiPath="/units" label="Unit" testid="units" /></TabsContent>
         <TabsContent value="users"><UsersPane /></TabsContent>
         <TabsContent value="staff"><StaffPane /></TabsContent>
+        <TabsContent value="suppliers"><SupplierPane /></TabsContent>
         <TabsContent value="whatsapp"><WhatsAppPane /></TabsContent>
         <TabsContent value="reorder"><ReorderPane /></TabsContent>
       </Tabs>

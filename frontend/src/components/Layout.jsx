@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import {
   LayoutDashboard, Package, ShoppingCart, ClipboardCheck, IndianRupee,
   Boxes, BellRing, Settings, LogOut, Tv, Menu, X,
-  Wallet, Users, LineChart
+  Wallet, Users, LineChart, Trash2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import StagingBanner from "@/components/StagingBanner";
@@ -22,6 +22,7 @@ const NAV = [
   { to: "/closing-stock", label: "Closing Stock", icon: ClipboardCheck, roles: ["admin", "staff"] },
   { to: "/sales", label: "Sales", icon: IndianRupee, roles: ["admin", "staff"] },
   { to: "/expenses", label: "Expenses", icon: Wallet, roles: ["admin", "staff"] },
+  { to: "/wastage", label: "Wastage", icon: Trash2, roles: ["admin", "staff", "viewer"] },
   { to: "/salaries", label: "Salaries", icon: Users, roles: ["admin"] },
   { to: "/pnl", label: "P&L Statement", icon: LineChart, roles: ["admin", "viewer"] },
   { to: "/items", label: "Item Master", icon: Package, roles: ["admin"] },

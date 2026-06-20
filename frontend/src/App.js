@@ -21,6 +21,7 @@ import InventoryInsights  from "@/pages/InventoryInsights";
 import Expenses from "@/pages/Expenses";
 import Salaries from "@/pages/Salaries";
 import PnL from "@/pages/PnL";
+import Wastage from "@/pages/Wastage";
 import "@/App.css";
 
 /**
@@ -84,6 +85,9 @@ export default function App() {
             } />
             <Route path="/pnl" element={
               <ProtectedRoute roles={["admin", "viewer"]}><ErrorBoundary><PnL /></ErrorBoundary></ProtectedRoute>
+            } />
+            <Route path="/wastage" element={
+              <ProtectedRoute roles={["admin", "staff", "viewer"]}><ErrorBoundary><Wastage /></ErrorBoundary></ProtectedRoute>
             } />
             <Route path="/settings" element={
               <ProtectedRoute roles={["admin"]}><ErrorBoundary><Settings /></ErrorBoundary></ProtectedRoute>

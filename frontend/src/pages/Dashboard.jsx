@@ -50,6 +50,12 @@ function KPI({ icon: Icon, label, value, hint, color = "orange", testid }) {
   const valStr  = String(value);
   const fontSize = valStr.length > 10 ? "text-lg" : valStr.length > 7 ? "text-xl" : "text-2xl";
 
+  // Map hint → badge styling. "Break-Even" is a new neutral state.
+  const hintStyle = hint === "Profit"     ? "bg-green-100 text-green-700"
+                  : hint === "Loss"       ? "bg-red-100 text-red-700"
+                  : hint === "Break-Even" ? "bg-slate-100 text-slate-600"
+                  : null;
+
   return (
     <Card className="rounded-2xl border-orange-900/10 shadow-sm" data-testid={testid}>
       <CardContent className="p-4">
@@ -57,11 +63,14 @@ function KPI({ icon: Icon, label, value, hint, color = "orange", testid }) {
           <div className={`h-9 w-9 rounded-xl flex items-center justify-center ${palette}`}>
             <Icon size={18} />
           </div>
-          {hint && (
-            <span className={cn(
-              "text-[10px] uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded",
-              hint === "Profit" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
-            )}>{hint}</span>
+          {hint && hintStyle && (
+            <span
+              data-testid={`${testid}-hint`}
+              className={cn(
+                "text-[10px] uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded",
+                hintStyle
+              )}
+            >{hint}</span>
           )}
         </div>
         <div className="mt-3">
@@ -192,7 +201,16 @@ export default function Dashboard() {
   const kpiExp      = filtered?.expenses  ?? data.today_expenses;
   const kpiPur      = filtered?.purchases ?? 0;
   const kpiNet      = filtered?.net       ?? data.today_pnl;
-  const isProfit    = kpiNet >= 0;
+  const isProfit    = kpiNet > 0;
+  const isLoss      = kpiNet < 0;
+  const periodHasTxns   = (kpiSales + kpiExp + kpiPur) > 0;
+  const periodPnlHint   = isProfit ? "Profit" : isLoss ? "Loss" : periodHasTxns ? "Break-Even" : null;
+
+  // Overall (all-time) P&L hint
+  const allTimeHasTxns  = (data.total_sales + data.total_spent) > 0;
+  const allTimePnlHint  = data.profit > 0 ? "Profit"
+                        : data.profit < 0 ? "Loss"
+                        : allTimeHasTxns  ? "Break-Even" : null;
 
   return (
     <div className="space-y-6 animate-fade-up" data-testid="dashboard-page">
@@ -266,11 +284,11 @@ export default function Dashboard() {
              value={loading ? "..." : inr(kpiExp)}
              color="amber" />
         <KPI testid="kpi-today-pnl"
-             icon={isProfit ? TrendingUp : TrendingDown}
+             icon={isLoss ? TrendingDown : TrendingUp}
              label={`${rangeLabel} P&L`}
              value={loading ? "..." : inr(Math.abs(kpiNet))}
-             hint={loading ? "" : isProfit ? "Profit" : "Loss"}
-             color={isProfit ? "green" : "red"} />
+             hint={loading ? null : periodPnlHint}
+             color={isProfit ? "green" : isLoss ? "red" : "slate"} />
         <KPI testid="kpi-total-sales"
              icon={IndianRupee}
              label="Total Sales (All Time)"
@@ -285,8 +303,8 @@ export default function Dashboard() {
              icon={Scale}
              label="Overall P&L (All Time)"
              value={inr(Math.abs(data.profit))}
-             hint={data.profit >= 0 ? "Profit" : "Loss"}
-             color={data.profit >= 0 ? "green" : "red"} />
+             hint={allTimePnlHint}
+             color={data.profit > 0 ? "green" : data.profit < 0 ? "red" : "slate"} />
         <KPI testid="kpi-low-stock"
              icon={AlertTriangle}
              label="Low Stock Items"

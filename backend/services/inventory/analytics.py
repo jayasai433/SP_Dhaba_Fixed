@@ -15,6 +15,7 @@ from datetime import date, timedelta
 from typing import Dict, List, Optional
 
 from core.db import db
+from core.utils import today_ist
 
 
 class ItemStats:
@@ -149,7 +150,7 @@ class ConsumptionAnalytics:
             return {}
 
         # Fetch all closing stock data for the lookback period in one query
-        start_date = (date.today() - timedelta(days=self.lookback_days)).isoformat()
+        start_date = (today_ist() - timedelta(days=self.lookback_days)).isoformat()
         closing_docs = await db.closing_stock.find(
             {"date": {"$gte": start_date}},
             {"_id": 0, "item_id": 1, "date": 1, "consumed": 1, "closing_qty": 1}

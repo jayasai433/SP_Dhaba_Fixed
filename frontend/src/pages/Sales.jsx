@@ -9,11 +9,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
 import { inr, fmtDate, todayIST } from "@/lib/format";
-import { IndianRupee, AlertTriangle, CheckCircle2, Info } from "lucide-react";
+import { IndianRupee, AlertTriangle, CheckCircle2, Download, Receipt } from "lucide-react";
 import { useSave } from "@/hooks/useSave";
+import { Skeleton } from "@/components/ui/skeleton";
+import { SKELETON_KEYS } from "@/lib/skeletons";
 
 export default function Sales() {
-  const [rows, setRows] = useState([]);
+  const [rows, setRows] = useState(null);
   const [date, setDate] = useState(todayIST());
   const [lunch, setLunch] = useState("");
   const [dinner, setDinner] = useState("");
@@ -77,6 +79,7 @@ export default function Sales() {
   };
 
   const { weekly, monthly } = useMemo(() => {
+    if (!rows) return { weekly: 0, monthly: 0 };
     const today = new Date(todayIST() + "T00:00:00");
     const weekAgo = new Date(today); weekAgo.setDate(today.getDate() - 6);
     const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -91,9 +94,26 @@ export default function Sales() {
 
   return (
     <div className="space-y-6 animate-fade-up" data-testid="sales-page">
-      <div>
-        <div className="text-xs font-semibold tracking-widest uppercase text-orange-700">Revenue</div>
-        <h1 className="font-display text-3xl sm:text-4xl font-bold text-slate-900">Sales</h1>
+      <div className="flex items-end justify-between flex-wrap gap-2">
+        <div>
+          <div className="text-xs font-semibold tracking-widest uppercase text-orange-700">Revenue</div>
+          <h1 className="font-display text-3xl sm:text-4xl font-bold text-slate-900">Sales</h1>
+        </div>
+        <Button onClick={async () => {
+          try {
+            const { data, headers } = await api.get("/export/sales.csv", { responseType: "blob" });
+            const url = window.URL.createObjectURL(new Blob([data], { type: "text/csv" }));
+            const a = document.createElement("a");
+            a.href = url;
+            const cd = headers["content-disposition"] || "";
+            const m = cd.match(/filename="?([^"]+)"?/);
+            a.download = m ? m[1] : "sales.csv";
+            document.body.appendChild(a); a.click(); a.remove();
+            window.URL.revokeObjectURL(url);
+          } catch { toast.error("Failed to export CSV"); }
+        }} variant="outline" data-testid="sales-export-csv-button" className="rounded-full border-orange-300 text-orange-700">
+          <Download size={16} className="mr-1" />Export CSV
+        </Button>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
@@ -112,7 +132,7 @@ export default function Sales() {
         <Card className="rounded-2xl border-orange-900/10 shadow-sm col-span-2 md:col-span-1" data-testid="sales-alltime-card">
           <CardContent className="p-4">
             <div className="text-xs uppercase tracking-wider text-slate-500">All-Time</div>
-            <div className="font-display font-bold text-2xl text-orange-700 tabular-nums">{inr(rows.reduce((a, b) => a + b.total_amount, 0))}</div>
+            <div className="font-display font-bold text-2xl text-orange-700 tabular-nums">{inr((rows || []).reduce((a, b) => a + b.total_amount, 0))}</div>
           </CardContent>
         </Card>
       </div>
@@ -120,21 +140,6 @@ export default function Sales() {
       <Card className="rounded-2xl border-orange-900/10 shadow-sm">
         <CardContent className="p-5">
           <h3 className="font-display text-lg font-semibold text-slate-900 mb-3">Record Sales</h3>
-
-          {/* One-per-day notice — uses design system warning colors */}
-          <div
-            className="flex items-start gap-2 mb-4 p-3 rounded-xl border text-xs"
-            style={{ background: "#FFFDE7", borderColor: "#F9A825", color: "#5D4037" }}
-            data-testid="sales-once-per-day-notice"
-          >
-            <Info size={14} className="flex-shrink-0 mt-0.5" style={{ color: "#F57F17" }} />
-            <span>
-              Sales can be entered <strong>once per day only</strong>.{" "}
-              {canEdit
-                ? 'As admin, use "Edit & Correct" if a correction is needed.'
-                : "Contact admin if a correction is needed after saving."}
-            </span>
-          </div>
 
           <form onSubmit={submit} className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
             <div className="md:col-span-3">
@@ -236,8 +241,14 @@ export default function Sales() {
       <Card className="rounded-2xl border-orange-900/10 shadow-sm">
         <CardContent className="p-5">
           <h3 className="font-display text-lg font-semibold text-slate-900 mb-3">Sales History</h3>
-          {rows.length === 0 ? (
-            <p className="text-sm text-slate-500 py-6 text-center">No sales recorded yet.</p>
+          {rows === null ? (
+            <div className="space-y-2">{SKELETON_KEYS.slice(0, 5).map((k) => <Skeleton key={k} className="h-10 rounded-lg" />)}</div>
+          ) : rows.length === 0 ? (
+            <div className="text-center py-10 text-slate-500" data-testid="sales-empty-state">
+              <Receipt className="mx-auto text-orange-300 mb-2" size={36} />
+              <p className="font-medium">No sales recorded yet</p>
+              <p className="text-sm mt-1">Use the form above to record today's first sale.</p>
+            </div>
           ) : (
             <div className="overflow-x-auto">
               <Table>

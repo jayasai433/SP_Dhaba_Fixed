@@ -18,7 +18,7 @@ from datetime import date, timedelta
 from typing import List, Optional
 
 from core.db import db
-from core.utils import now_utc, iso
+from core.utils import now_utc, iso, today_ist
 from models.closing_stock import ClosingStockIn, ClosingStockOut, DailyStockSummary
 
 # Wastage threshold — flag if actual consumption exceeds recorded usage by >10%
@@ -126,7 +126,7 @@ class ClosingStockService:
         Returns: [{date, wastage_cost_est, items_flagged}]
         Future: add forecast_loss when ML model is integrated.
         """
-        end_dt   = date.today()
+        end_dt   = today_ist()
         start_dt = end_dt - timedelta(days=days - 1)
 
         pipeline = [

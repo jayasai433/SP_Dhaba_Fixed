@@ -154,7 +154,7 @@ class PurchaseIn(BaseModel):
     item_id: str
     date: str  # YYYY-MM-DD
     quantity: float = Field(gt=0)
-    price_per_unit: float = Field(ge=0)
+    price_per_unit: float = Field(gt=0, description="Price must be greater than 0")
 
 class UsageIn(BaseModel):
     item_id: str
@@ -1493,8 +1493,29 @@ async def run_job(job_name: str, user=Depends(require_roles("admin"))):
 async def root():
     return {"app": "SP Royal Punjabi Dhaba — Operations Manager", "status": "ok"}
 
+@api.get("/health")
+async def health():
+    """Returns environment + DB name so the frontend banner is accurate."""
+    env = os.environ.get("ENVIRONMENT", "production").lower()
+    try:
+        await client.admin.command("ping")
+        return {
+            "status":      "ok",
+            "db":          "connected",
+            "db_name":     os.environ.get("DB_NAME", "unknown"),
+            "environment": env,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"DB unavailable: {str(e)[:100]}")
+
 # ---------------- Mount ----------------
 app.include_router(api)
+
+# Modular routers (new operational features — wastage, suppliers, CSV exports)
+from routers.wastage import router as _wastage_router
+from routers.exports import router as _exports_router
+app.include_router(_wastage_router, prefix="/api")
+app.include_router(_exports_router, prefix="/api")
 
 app.add_middleware(
     CORSMiddleware,
