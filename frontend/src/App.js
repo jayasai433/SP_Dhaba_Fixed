@@ -66,7 +66,8 @@ export default function App() {
               <ProtectedRoute roles={["admin", "viewer", "staff"]}><ErrorBoundary><Dashboard /></ErrorBoundary></ProtectedRoute>
             } />
             <Route path="/stock" element={<ErrorBoundary><LiveStock /></ErrorBoundary>} />
-            <Route path="/alerts" element={<ErrorBoundary><Alerts /></ErrorBoundary>} />
+            {/* Alerts route hidden until v2.0 — chef communicates stock needs manually */}
+            {/* <Route path="/alerts" element={<ErrorBoundary><Alerts /></ErrorBoundary>} /> */}
             <Route path="/purchases" element={
               <ProtectedRoute roles={["admin", "staff"]}><ErrorBoundary><Purchases /></ErrorBoundary></ProtectedRoute>
             } />

@@ -18,7 +18,8 @@ import { Badge } from "@/components/ui/badge";
 const NAV = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["admin", "viewer", "staff"] },
   { to: "/stock", label: "Live Stock", icon: Boxes, roles: ["admin", "staff", "viewer"] },
-  { to: "/alerts", label: "Alerts", icon: BellRing, roles: ["admin", "staff", "viewer"], badge: true },
+  // Alerts hidden — chef communicates stock needs manually (re-enable in v2.0)
+  // { to: "/alerts", label: "Alerts", icon: BellRing, roles: ["admin", "staff", "viewer"], badge: true },
   { to: "/purchases", label: "Purchases", icon: ShoppingCart, roles: ["admin", "staff"] },
   { to: "/closing-stock", label: "Closing Stock", icon: ClipboardCheck, roles: ["admin", "staff"] },
   { to: "/sales", label: "Sales", icon: IndianRupee, roles: ["admin", "staff"] },
@@ -34,7 +35,7 @@ const NAV = [
 const MOBILE_NAV_BY_ROLE = {
   admin: ["/dashboard", "/stock", "/purchases", "/sales", "/closing-stock"],
   staff: ["/dashboard", "/stock", "/purchases", "/closing-stock", "/sales", "/expenses", "/display"],
-  viewer: ["/dashboard", "/stock", "/alerts", "/pnl", "/display"],
+  viewer: ["/dashboard", "/stock", "/pnl", "/display"],
 };
 
 export default function Layout() {
@@ -52,13 +53,12 @@ export default function Layout() {
     };
   }, []);
   const loc = useLocation();
-  const [alertsCount, setAlertsCount] = useState(0);
+  // alertsCount disabled — alerts feature hidden until v2.0
+  const alertsCount = 0;
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   const fetchAlerts = useCallback(() => {
-    api.get("/alerts")
-      .then(({ data }) => setAlertsCount(data.length))
-      .catch((err) => logger.error("Alerts badge fetch failed:", err));
+    // alerts fetch disabled — feature hidden until v2.0
   }, []);
 
   useEffect(() => {

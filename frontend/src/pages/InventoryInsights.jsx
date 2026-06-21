@@ -263,7 +263,7 @@ export default function InventoryInsights() {
           <CardTitle className="text-base font-semibold flex items-center gap-2">
             <AlertTriangle size={16} className="text-orange-500" />
             Alerts
-            {summary.total_alerts > 0 && (
+            {false && summary.total_alerts > 0 && ( /* alerts hidden until v2.0 */
               <Badge className="bg-red-100 text-red-700 border-0 ml-1">
                 {summary.total_alerts}
               </Badge>

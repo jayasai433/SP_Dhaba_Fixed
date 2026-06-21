@@ -120,7 +120,7 @@ export default function LiveStock() {
                   <span className="text-xs text-slate-600">{s.unit}</span>
                 </div>
                 <div className="mt-1 text-[11px] flex items-center justify-between">
-                  <span>Reorder: {s.reorder_level} {s.unit}</span>
+                  {/* Reorder level hidden until v2.0 alerts feature is re-enabled */}
                   <Badge className={cn("rounded-full text-[10px] py-0", meta.color, "border")}>{meta.label}</Badge>
                 </div>
               </Link>
