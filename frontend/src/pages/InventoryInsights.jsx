@@ -277,7 +277,7 @@ export default function InventoryInsights() {
               All items within normal consumption range
             </div>
           ) : (
-            alerts.map((a, i) => <AlertCard key={i} alert={a} />)
+            alerts.map((a) => <AlertCard key={a.title} alert={a} />)
           )}
         </CardContent>
       </Card>

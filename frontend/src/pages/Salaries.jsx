@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
+import logger from "@/lib/logger";
 import api, { formatApiError } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -97,13 +98,13 @@ export default function Salaries() {
     try {
       const { data } = await api.get("/staff");
       setStaff(data);
-    } catch (err) { console.error("Failed to load staff:", err); }
+    } catch (err) { logger.error("Failed to load staff:", err); }
   }, []);
   const loadRows = useCallback(async () => {
     try {
       const { data } = await api.get("/salaries", { params: { month } });
       setRows(data);
-    } catch (err) { console.error("Failed to load salaries:", err); }
+    } catch (err) { logger.error("Failed to load salaries:", err); }
   }, [month]);
 
   useEffect(() => { loadStaff(); }, [loadStaff]);

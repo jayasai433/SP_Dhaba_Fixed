@@ -13,6 +13,7 @@
  */
 
 import { useEffect, useState, useMemo } from "react";
+import logger from "@/lib/logger";
 import { useAuth } from "@/contexts/AuthContext";
 import api from "@/lib/api";
 import { useClosingStock } from "@/hooks/useClosingStock";
@@ -46,7 +47,7 @@ export default function ClosingStock() {
   useEffect(() => {
     api.get("/items")
       .then(({ data }) => setItems(data.filter((i) => i.is_active)))
-      .catch((err) => console.error("Failed to load items:", err));
+      .catch((err) => logger.error("Failed to load items:", err));
   }, []);
 
   // Reload entries when date changes

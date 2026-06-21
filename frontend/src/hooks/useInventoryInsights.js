@@ -7,6 +7,7 @@
  */
 
 import { useState, useCallback } from "react";
+import logger from "@/lib/logger";
 import api from "@/lib/api";
 
 export function useInventoryInsights() {
@@ -22,7 +23,7 @@ export function useInventoryInsights() {
       const { data } = await api.get("/inventory/insights");
       setInsights(data);
     } catch (err) {
-      console.error("Failed to load inventory insights:", err);
+      logger.error("Failed to load inventory insights:", err);
       setError(true);
     } finally {
       setLoading(false);
@@ -34,7 +35,7 @@ export function useInventoryInsights() {
       const { data } = await api.get("/inventory/cost-trend", { params: { days } });
       setCostTrend(data);
     } catch (err) {
-      console.error("Failed to load cost trend:", err);
+      logger.error("Failed to load cost trend:", err);
       setCostTrend([]);
     }
   }, []);

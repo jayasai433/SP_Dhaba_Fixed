@@ -8,6 +8,7 @@
  */
 
 import { useState, useCallback } from "react";
+import logger from "@/lib/logger";
 import { toast } from "sonner";
 import api, { formatApiError } from "@/lib/api";
 
@@ -43,7 +44,7 @@ export function useClosingStock() {
       const { data } = await api.get(`/closing-stock/${dateStr}`);
       setEntries(data);
     } catch (err) {
-      console.error("Failed to load closing stock:", err);
+      logger.error("Failed to load closing stock:", err);
       setEntries([]);
     } finally {
       setLoading(false);

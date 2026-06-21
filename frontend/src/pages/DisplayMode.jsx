@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import logger from "@/lib/logger";
 import { useNavigate } from "react-router-dom";
 import api from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
@@ -20,7 +21,7 @@ async function requestWakeLock() {
       await navigator.wakeLock.request("screen");
     }
   } catch (e) {
-    console.log("Wake Lock not available:", e);
+    logger.log("Wake Lock not available:", e);
   }
 }
 
@@ -46,7 +47,7 @@ export default function DisplayMode() {
       setAlerts(a);
       setError(false);
     } catch (err) {
-      console.error(err);
+      logger.error("DisplayMode load failed:", err);
       setError(true);
     }
   }, []);
@@ -59,6 +60,8 @@ export default function DisplayMode() {
   }, [load]);
 
   // Prevent screen from dimming in Display Mode
+  // requestWakeLock is a module-level stable function — empty deps is intentional
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     requestWakeLock();
     const handleVisibility = () => {
@@ -72,9 +75,9 @@ export default function DisplayMode() {
     e.preventDefault();
     e.stopPropagation();
     if (document.fullscreenElement) {
-      document.exitFullscreen().catch((err) => console.error(err));
+      document.exitFullscreen().catch((err) => logger.error("exitFullscreen failed:", err));
     } else {
-      document.documentElement.requestFullscreen().catch((err) => console.error(err));
+      document.documentElement.requestFullscreen().catch((err) => logger.error("requestFullscreen failed:", err));
     }
   };
 
@@ -83,7 +86,7 @@ export default function DisplayMode() {
     e.stopPropagation();
     // Exit fullscreen first if active, then navigate to home
     if (document.fullscreenElement) {
-      try { await document.exitFullscreen(); } catch (err) { console.error(err); }
+      try { await document.exitFullscreen(); } catch (err) { logger.error("exitFullscreen failed:", err); }
     }
     // Navigate based on role - never logout
     const role = user?.role;

@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import logger from "@/lib/logger";
 import api from "@/lib/api";
 import { inr, fmtDate, todayIST } from "@/lib/format";
 import { Card, CardContent } from "@/components/ui/card";
@@ -157,14 +158,18 @@ export default function Dashboard() {
         range,
       });
     } catch (e) {
-      console.error("Filter fetch failed:", e);
+      logger.error("Filter fetch failed:", e);
     } finally {
       setLoading(false);
     }
+  // api is a module-level stable object; setter fns from useState are stable — empty deps is correct
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     fetchFiltered(period, custom);
+  // custom is intentionally excluded: fetchFiltered receives it as an arg,
+  // so adding it here would double-fire on every keystroke in the custom date inputs
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [period, fetchFiltered]);
 

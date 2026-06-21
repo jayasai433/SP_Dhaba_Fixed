@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import logger from "@/lib/logger";
 import api, { formatApiError } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -205,7 +206,7 @@ export default function WhatsAppPane() {
       setNums(n.data);
       setSettings(s.data);
       setLog(l.data);
-    } catch (err) { console.error("Failed to load WhatsApp settings:", err); }
+    } catch (err) { logger.error("Failed to load WhatsApp settings:", err); }
   }, []);
   useEffect(() => { loadAll(); }, [loadAll]);
 

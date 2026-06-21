@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import logger from "@/lib/logger";
 import { Link, useLocation, Outlet } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBusinessProfile } from "@/contexts/BusinessProfileContext";
@@ -57,7 +58,7 @@ export default function Layout() {
   const fetchAlerts = useCallback(() => {
     api.get("/alerts")
       .then(({ data }) => setAlertsCount(data.length))
-      .catch((err) => console.error('Alerts badge fetch failed:', err));
+      .catch((err) => logger.error("Alerts badge fetch failed:", err));
   }, []);
 
   useEffect(() => {

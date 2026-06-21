@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
+import logger from "@/lib/logger";
 import api, { formatApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent } from "@/components/ui/card";
@@ -27,7 +28,7 @@ export default function Sales() {
   const { user } = useAuth();
   const canEdit = user?.role === "admin";
 
-  const load = useCallback(() => { api.get("/sales").then(({ data }) => setRows(data)).catch((err) => console.error(err)); }, []);
+  const load = useCallback(() => { api.get("/sales").then(({ data }) => setRows(data)).catch((err) => logger.error("Sales load failed:", err)); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
@@ -90,7 +91,7 @@ export default function Sales() {
       if (d >= monthStart && d <= today) m += r.total_amount;
     });
     return { weekly: w, monthly: m };
-  }, [rows]);
+  }, [rows]); // rows is the only reactive dep; todayIST() is called inline (stable)
 
   return (
     <div className="space-y-6 animate-fade-up" data-testid="sales-page">

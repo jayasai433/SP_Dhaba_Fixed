@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
+import logger from "@/lib/logger";
 import api, { formatApiError } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -26,7 +27,7 @@ export default function Items() {
         api.get("/items"), api.get("/categories"), api.get("/units"),
       ]);
       setItems(it.data); setCategories(ca.data); setUnits(un.data);
-    } catch (err) { console.error("Failed to load items:", err); }
+    } catch (err) { logger.error("Failed to load items:", err); }
   }, []);
   useEffect(() => { load(); }, [load]);
 

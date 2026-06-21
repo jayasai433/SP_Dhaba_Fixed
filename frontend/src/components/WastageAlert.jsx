@@ -40,11 +40,11 @@ export function WastageAlert({ items, wastage_cost_est }) {
           <span className="text-red-700 font-bold tabular-nums">{inr(wastage_cost_est)}</span>
         </div>
       )}
-      {items.map((item, i) => {
+      {items.map((item) => {
         const sev = getSeverity(item.variance_pct);
         const Icon = sev.icon;
         return (
-          <div key={i}
+          <div key={item.item}
             className={`flex items-center justify-between rounded-xl px-4 py-2.5 text-sm
               bg-${sev.color}-50 border border-${sev.color}-200`}>
             <div className="flex items-center gap-2">
