@@ -29,22 +29,22 @@ export default function DisplayMode() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { profile } = useBusinessProfile();
-  const [stock, setStock] = useState([]);
   const [today, setToday] = useState(0);
-  const [alerts, setAlerts] = useState([]);
+  const [week, setWeek] = useState(0);
+  const [month, setMonth] = useState(0);
   const [now, setNow] = useState(new Date());
   const [error, setError] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const [s, d, a] = await Promise.all([
-        api.get("/stock").then((r) => r.data),
+      const [todayData, weekData, monthData] = await Promise.all([
         api.get("/sales/check/" + todayIST()).then((r) => r.data),
-        api.get("/alerts").then((r) => r.data),
+        api.get("/sales", { params: { period: "week" } }).then((r) => r.data),
+        api.get("/sales", { params: { period: "month" } }).then((r) => r.data),
       ]);
-      setStock(s.filter((x) => x.is_active));
-      setToday(d.entry?.total_amount || 0);
-      setAlerts(a);
+      setToday(todayData.entry?.total_amount || 0);
+      setWeek(weekData.reduce((a, b) => a + (b.total_amount || 0), 0));
+      setMonth(monthData.reduce((a, b) => a + (b.total_amount || 0), 0));
       setError(false);
     } catch (err) {
       logger.error("DisplayMode load failed:", err);
@@ -95,8 +95,6 @@ export default function DisplayMode() {
     else navigate("/dashboard");
   };
 
-  const counts = stock.reduce((acc, s) => { acc[s.status] = (acc[s.status] || 0) + 1; return acc; }, { in: 0, low: 0, out: 0 });
-  const topAlerts = alerts.slice(0, 10);
 
   return (
     <div className="-m-4 md:-m-8 -mt-6 md:-mt-8 min-h-screen bg-[#2D1606] text-white" data-testid="display-mode-page">
@@ -114,59 +112,36 @@ export default function DisplayMode() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 p-6">
-        <div className="lg:col-span-4 space-y-4">
-          <div className="rounded-2xl bg-white/5 border border-white/10 p-6">
-            <div className="text-orange-200/70 text-xs uppercase tracking-widest">Today's Sales</div>
-            <div className="font-display text-6xl font-bold tabular-nums mt-2 text-orange-300">{inr(today)}</div>
-          </div>
-          <div className="grid grid-cols-3 gap-3">
-            <div className="rounded-2xl bg-green-900/40 border border-green-500/30 p-4 text-center">
-              <div className="text-xs text-green-200">In Stock</div>
-              <div className="font-display font-bold text-3xl tabular-nums">{counts.in}</div>
-            </div>
-            <div className="rounded-2xl bg-amber-900/40 border border-amber-500/30 p-4 text-center">
-              <div className="text-xs text-amber-200">Low</div>
-              <div className="font-display font-bold text-3xl tabular-nums">{counts.low}</div>
-            </div>
-            <div className="rounded-2xl bg-red-900/40 border border-red-500/30 p-4 text-center">
-              <div className="text-xs text-red-200">Out</div>
-              <div className="font-display font-bold text-3xl tabular-nums">{counts.out}</div>
-            </div>
-          </div>
+      {/* Clean sales-only display — stock grid removed (not live, re-enable in v2.0) */}
+      <div className="flex flex-col items-center justify-center flex-1 p-6 gap-6 min-h-[80vh]">
 
-          <div className="rounded-2xl bg-white/5 border border-white/10 p-5">
-            <div className="font-display font-semibold mb-3">Top Alerts ({alerts.length})</div>
-            {topAlerts.length === 0 ? (
-              <div className="text-sm text-green-300">✓ All items in stock — well done!</div>
-            ) : (
-              <div className="space-y-2">
-                {topAlerts.map((a) => (
-                  <div key={a.item_id} data-testid={`display-alert-${a.item_id}`} className={`flex items-center justify-between px-3 py-2 rounded-xl border ${STATUS_BG[a.status]}`}>
-                    <div>
-                      <div className="font-medium">{a.name}</div>
-                      <div className="text-xs text-white/60">{a.category}</div>
-                    </div>
-                    <div className="tabular-nums font-display font-bold text-lg">{a.qty_left} {a.unit}</div>
-                  </div>
-                ))}
-              </div>
-            )}
+        {/* Today's Sales — hero */}
+        <div className="rounded-3xl bg-white/5 border border-white/10 p-10 text-center w-full max-w-lg">
+          <div className="text-orange-200/70 text-sm uppercase tracking-widest mb-2">Today's Sales</div>
+          <div className="font-display text-7xl font-bold tabular-nums text-orange-300" data-testid="display-today-sales">
+            {inr(today)}
           </div>
         </div>
 
-        <div className="lg:col-span-8">
-          <div className="font-display font-semibold mb-3 text-orange-200">Live Stock</div>
-          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3" data-testid="display-stock-grid">
-            {stock.map((s) => (
-              <div key={s.item_id}
-                className={`p-4 rounded-2xl border ${STATUS_BG[s.status]}`}>
-                <div className="text-[10px] uppercase tracking-widest opacity-70">{s.category}</div>
-                <div className="font-display font-semibold truncate">{s.name}</div>
-                <div className="font-display font-bold text-3xl tabular-nums mt-2">{s.qty_left} <span className="text-base font-normal opacity-70">{s.unit}</span></div>
-              </div>
-            ))}
+        {/* Weekly + Monthly */}
+        <div className="grid grid-cols-2 gap-4 w-full max-w-lg">
+          <div className="rounded-2xl bg-white/5 border border-white/10 p-6 text-center">
+            <div className="text-orange-200/70 text-xs uppercase tracking-widest mb-1">This Week</div>
+            <div className="font-display text-3xl font-bold tabular-nums text-white" data-testid="display-week-sales">
+              {inr(week)}
+            </div>
           </div>
+          <div className="rounded-2xl bg-white/5 border border-white/10 p-6 text-center">
+            <div className="text-orange-200/70 text-xs uppercase tracking-widest mb-1">This Month</div>
+            <div className="font-display text-3xl font-bold tabular-nums text-white" data-testid="display-month-sales">
+              {inr(month)}
+            </div>
+          </div>
+        </div>
+
+        {/* Motivational footer */}
+        <div className="text-orange-200/40 text-sm text-center mt-4">
+          SP Royal Punjabi Family Dhaba · {fmtDate(todayIST())}
         </div>
       </div>
     </div>
