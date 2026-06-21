@@ -6,6 +6,7 @@ Endpoints:
   GET  /smart-reorder            — Groq AI reorder recommendations
   POST /smart-reorder/refresh    — force refresh Groq cache (admin only)
 """
+from __future__ import annotations
 
 import os
 import time

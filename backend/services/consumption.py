@@ -16,6 +16,7 @@ Why weighted average?
 
 Minimum 2 purchases required — returns None if insufficient data.
 """
+from __future__ import annotations
 
 from datetime import date, timedelta
 from typing import Optional
