@@ -16,6 +16,9 @@ const STATUS_META = {
   out: { label: "Out of Stock", color: "bg-[#FFEBEE] border-[#C62828]/20 text-[#C62828]", dot: "bg-[#C62828]" },
 };
 
+import { useConsumption } from "@/hooks/useConsumption";
+import ConsumptionBadge from "@/components/ConsumptionBadge";
+
 export default function LiveStock() {
   const [stock, setStock] = useState(null);
   const [error, setError] = useState(false);
@@ -25,6 +28,8 @@ export default function LiveStock() {
 
   const load = useCallback(() => api.get("/stock").then(({ data }) => setStock(data)).catch(() => setError(true)), []);
   useEffect(() => { load(); const t = setInterval(load, 60000); return () => clearInterval(t); }, [load]);
+
+  const { rates: consumptionRates } = useConsumption();
 
   const categories = useMemo(() => {
     if (!stock) return [];
@@ -122,6 +127,10 @@ export default function LiveStock() {
                 <div className="mt-1 text-[11px] flex items-center justify-between">
                   {/* Reorder level hidden until v2.0 alerts feature is re-enabled */}
                   <Badge className={cn("rounded-full text-[10px] py-0", meta.color, "border")}>{meta.label}</Badge>
+                </div>
+                {/* Consumption rate badge */}
+                <div className="mt-2" onClick={(e) => e.preventDefault()}>
+                  <ConsumptionBadge rate={consumptionRates[s.item_id]} />
                 </div>
               </Link>
             );

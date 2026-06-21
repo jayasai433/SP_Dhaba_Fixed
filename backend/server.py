@@ -1772,8 +1772,13 @@ app.include_router(api)
 # Modular routers (new operational features — wastage, suppliers, CSV exports)
 from routers.wastage import router as _wastage_router
 from routers.exports import router as _exports_router
+from routers.insights import router as _insights_router, set_db as _insights_set_db, set_auth as _insights_set_auth
 app.include_router(_wastage_router, prefix="/api")
 app.include_router(_exports_router, prefix="/api")
+app.include_router(_insights_router, prefix="/api")
+# Wire DB and auth into insights router
+_insights_set_db(db)
+_insights_set_auth(get_current_user, lambda: require_roles("admin"))
 
 app.add_middleware(
     CORSMiddleware,

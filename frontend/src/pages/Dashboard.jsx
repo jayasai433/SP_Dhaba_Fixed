@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import logger from "@/lib/logger";
-import AiInsightCard from "@/components/AiInsightCard";
+import SmartReorderCard from "@/components/SmartReorderCard";
 import api from "@/lib/api";
 import { inr, fmtDate, todayIST } from "@/lib/format";
 import { Card, CardContent } from "@/components/ui/card";
@@ -455,8 +455,8 @@ export default function Dashboard() {
         </CardContent>
       </Card>
 
-      {/* AI Insight — admin + viewer only, hides if Groq unavailable */}
-      <AiInsightCard />
+      {/* Smart Reorder — Groq-powered, hides if unavailable */}
+      <SmartReorderCard />
 
     </div>
   );
