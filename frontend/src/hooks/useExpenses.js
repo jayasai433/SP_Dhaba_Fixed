@@ -40,12 +40,35 @@ export function useExpenses() {
     { successMessage: "Expense saved", onSuccess: () => { setDesc(""); setAmt(""); load(); } }
   );
 
-  const validateAndSave = (e) => {
+  const [anomalyWarnings, setAnomalyWarnings] = useState([]);
+  const [anomalySeverity, setAnomalySeverity] = useState('warning');
+  const [anomalyDialog, setAnomalyDialog] = useState(false);
+
+  const validateAndSave = async (e) => {
     e.preventDefault();
     if (!cat) return toast.error("Select a category");
     if (!(parseFloat(amt) > 0)) return toast.error("Amount must be greater than 0");
+
+    // Anomaly check before saving
+    try {
+      const { data } = await api.post("/anomaly-check", {
+        entry_type: "expense",
+        category: cat,
+        description: desc,
+        total_amount: parseFloat(amt),
+      });
+      if (data.is_suspicious) {
+        setAnomalyWarnings(data.warnings);
+        setAnomalySeverity(data.severity);
+        setAnomalyDialog(true);
+        return;
+      }
+    } catch { /* anomaly check failed — save normally */ }
     save();
   };
+
+  const confirmAnomaly = () => { setAnomalyDialog(false); save(); };
+  const cancelAnomaly  = () => { setAnomalyDialog(false); };
 
   const handleVoidConfirm = async (reason) => {
     const id = voidDialogId;
@@ -80,5 +103,6 @@ export function useExpenses() {
     validateAndSave, saving, load,
     dupDialog, confirmDuplicate, cancelDuplicate,
     voidDialogId, setVoidDialogId, handleVoidConfirm,
+    anomalyWarnings, anomalySeverity, anomalyDialog, confirmAnomaly, cancelAnomaly,
   };
 }

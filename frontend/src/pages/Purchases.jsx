@@ -15,6 +15,7 @@ import api from "@/lib/api";
 import DuplicateWarningDialog from "@/components/DuplicateWarningDialog";
 import VoidDialog from "@/components/VoidDialog";
 import { usePurchases } from "@/hooks/usePurchases";
+import AnomalyWarningDialog from "@/components/AnomalyWarningDialog";
 
 // ── CSV export helper ─────────────────────────────────────────────────────────
 async function downloadCSV(dateParams) {
@@ -45,6 +46,7 @@ export default function Purchases() {
     validateAndSave, saving,
     dupDialog, confirmDuplicate, cancelDuplicate,
     voidDialogId, setVoidDialogId, handleVoidConfirm,
+    anomalyWarnings, anomalySeverity, anomalyDialog, confirmAnomaly, cancelAnomaly,
   } = usePurchases();
 
   return (
@@ -52,6 +54,13 @@ export default function Purchases() {
       <DuplicateWarningDialog
         open={dupDialog} onConfirm={confirmDuplicate} onCancel={cancelDuplicate}
         message="A purchase for the same item and quantity was just recorded seconds ago. Did you intend to enter this again?"
+      />
+      <AnomalyWarningDialog
+        open={anomalyDialog}
+        warnings={anomalyWarnings}
+        severity={anomalySeverity}
+        onConfirm={confirmAnomaly}
+        onCancel={cancelAnomaly}
       />
       <VoidDialog
         open={!!voidDialogId} onConfirm={handleVoidConfirm}

@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import logger from "@/lib/logger";
+import AiInsightCard from "@/components/AiInsightCard";
 import api from "@/lib/api";
 import { inr, fmtDate, todayIST } from "@/lib/format";
 import { Card, CardContent } from "@/components/ui/card";
@@ -453,6 +454,9 @@ export default function Dashboard() {
           </div>
         </CardContent>
       </Card>
+
+      {/* AI Insight — admin + viewer only, hides if Groq unavailable */}
+      <AiInsightCard />
 
     </div>
   );

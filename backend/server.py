@@ -1512,6 +1512,245 @@ async def run_job(job_name: str, user=Depends(require_roles("admin"))):
 async def root():
     return {"app": "SP Royal Punjabi Dhaba — Operations Manager", "status": "ok"}
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# AI INSIGHT — Groq-powered dashboard summary (admin + viewer only)
+# Cached in-memory for 30 minutes to avoid excessive API calls
+# ─────────────────────────────────────────────────────────────────────────────
+import time as _time
+
+_insight_cache: dict = {"text": None, "ts": 0}
+_CACHE_TTL = 30 * 60  # 30 minutes
+
+@api.get("/ai-insight")
+async def ai_insight(user=Depends(require_roles("admin", "viewer"))):
+    global _insight_cache
+    now_ts = _time.time()
+
+    # Return cached insight if fresh
+    if _insight_cache["text"] and (now_ts - _insight_cache["ts"]) < _CACHE_TTL:
+        return {"insight": _insight_cache["text"], "cached": True}
+
+    groq_key = os.environ.get("GROQ_API_KEY")
+    if not groq_key:
+        return {"insight": None, "cached": False}
+
+    try:
+        # Gather minimal business context
+        ist_now = datetime.now(IST)
+        today = ist_now.strftime("%Y-%m-%d")
+        week_start = (ist_now.date() - timedelta(days=6)).isoformat()
+        month_start = ist_now.strftime("%Y-%m-01")
+
+        sales = await db.sales.find({}, {"_id": 0, "date": 1, "total_amount": 1}).to_list(500)
+        purchases = await db.purchases.find(
+            {"is_void": {"$ne": True}},
+            {"_id": 0, "date": 1, "total_cost": 1, "item_id": 1}
+        ).to_list(500)
+        expenses = await db.expenses.find(
+            {"is_void": {"$ne": True}},
+            {"_id": 0, "date": 1, "amount": 1, "category": 1}
+        ).to_list(500)
+        items = {i["id"]: i["name"] for i in await db.items.find({}, {"_id": 0, "id": 1, "name": 1}).to_list(200)}
+
+        # Calculate key metrics
+        today_sales = next((s["total_amount"] for s in sales if s["date"] == today), 0)
+        week_sales = sum(s["total_amount"] for s in sales if s["date"] >= week_start)
+        month_sales = sum(s["total_amount"] for s in sales if s["date"] >= month_start)
+        today_purchases = sum(p["total_cost"] for p in purchases if p["date"] == today)
+        week_purchases = sum(p["total_cost"] for p in purchases if p["date"] >= week_start)
+        today_expenses = sum(e["amount"] for e in expenses if e["date"] == today)
+
+        # Top purchased items this week
+        item_spend = {}
+        for p in purchases:
+            if p["date"] >= week_start:
+                name = items.get(p["item_id"], "Unknown")
+                item_spend[name] = item_spend.get(name, 0) + p["total_cost"]
+        top_items = sorted(item_spend.items(), key=lambda x: -x[1])[:5]
+
+        # Avg daily sales (last 30 days excluding today)
+        past_sales = [s["total_amount"] for s in sales if s["date"] < today]
+        avg_daily = round(sum(past_sales) / max(len(past_sales), 1), 0)
+
+        context = f"""
+SP Royal Punjabi Family Dhaba — Business Intelligence Summary
+Date: {today}, Time: {ist_now.strftime("%I:%M %p")} IST
+
+SALES:
+- Today: ₹{today_sales:,.0f} (daily avg: ₹{avg_daily:,.0f})
+- This week: ₹{week_sales:,.0f}
+- This month: ₹{month_sales:,.0f}
+
+COSTS TODAY:
+- Purchases: ₹{today_purchases:,.0f}
+- Expenses: ₹{today_expenses:,.0f}
+- Today P&L: ₹{today_sales - today_purchases - today_expenses:,.0f}
+
+TOP PURCHASES THIS WEEK:
+{chr(10).join(f"- {name}: ₹{amt:,.0f}" for name, amt in top_items)}
+"""
+
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"},
+                json={
+                    "model": "llama-3.1-8b-instant",
+                    "max_tokens": 200,
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": (
+                                "You are a sharp business advisor for a Indian dhaba (roadside restaurant). "
+                                "Give a 2-3 sentence insight in plain English. Be direct, specific, and actionable. "
+                                "Focus on what needs attention. No greetings, no fluff, no markdown."
+                            )
+                        },
+                        {"role": "user", "content": context}
+                    ]
+                }
+            )
+        resp.raise_for_status()
+        insight = resp.json()["choices"][0]["message"]["content"].strip()
+        _insight_cache = {"text": insight, "ts": now_ts}
+        return {"insight": insight, "cached": False}
+
+    except Exception as e:
+        logging.warning(f"Groq insight failed: {e}")
+        return {"insight": None, "cached": False}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ANOMALY CHECK — Pure math, no AI, checks purchase/expense before saving
+# ─────────────────────────────────────────────────────────────────────────────
+class AnomalyCheckIn(BaseModel):
+    entry_type: Literal["purchase", "expense"]
+    item_id: Optional[str] = None       # for purchases
+    item_name: Optional[str] = None     # for display
+    category: Optional[str] = None      # for expenses
+    quantity: Optional[float] = None
+    price_per_unit: Optional[float] = None
+    total_amount: Optional[float] = None
+    description: Optional[str] = None
+
+# ── Z-Score anomaly detection helpers ─────────────────────────────────────────
+def _zscore_stats(values):
+    """Return (mean, std) for a list of values. std=0 if all values identical."""
+    n = len(values)
+    mean = sum(values) / n
+    variance = sum((v - mean) ** 2 for v in values) / n
+    std = variance ** 0.5
+    return mean, std
+
+def _zscore(value, mean, std):
+    """Z-Score: how many std deviations from mean. Returns 0 if std=0."""
+    return abs(value - mean) / std if std > 0 else 0.0
+
+def _flag_severity(z):
+    """
+    Industry standard Z-Score thresholds:
+    z > 3.0 -> Critical  (0.3% probability — very unusual)
+    z > 2.0 -> Warning   (5%  probability — unusual)
+    z <= 2.0 -> Normal
+    """
+    if z > 3.0: return "critical"
+    if z > 2.0: return "warning"
+    return None
+
+_MIN_HISTORY = 5   # Minimum past entries before flagging
+_MAX_HISTORY = 30  # Rolling window — only recent data
+
+@api.post("/anomaly-check")
+async def anomaly_check(payload: AnomalyCheckIn, user=Depends(get_current_user)):
+    warnings = []
+    severity = "normal"
+    flags    = []
+
+    if payload.entry_type == "purchase" and payload.item_id:
+        past = await db.purchases.find(
+            {"item_id": payload.item_id, "is_void": {"$ne": True}},
+            {"_id": 0, "price_per_unit": 1, "quantity": 1}
+        ).sort("created_at", -1).limit(_MAX_HISTORY).to_list(_MAX_HISTORY)
+
+        if len(past) >= _MIN_HISTORY:
+            prices = [p["price_per_unit"] for p in past]
+            qtys   = [p["quantity"]       for p in past]
+
+            # Price Z-Score check
+            if payload.price_per_unit:
+                p_mean, p_std = _zscore_stats(prices)
+                p_z   = _zscore(payload.price_per_unit, p_mean, p_std)
+                p_sev = _flag_severity(p_z)
+                if p_sev:
+                    direction = "higher" if payload.price_per_unit > p_mean else "lower"
+                    warnings.append(
+                        f"Price Rs.{payload.price_per_unit:,.0f} is unusually {direction} "
+                        f"(avg Rs.{p_mean:,.0f} +/- Rs.{p_std:,.0f} over last {len(past)} purchases)."
+                    )
+                    flags.append({"field": "price", "z_score": round(p_z, 2), "severity": p_sev})
+                    if p_sev == "critical": severity = "critical"
+                    elif p_sev == "warning" and severity == "normal": severity = "warning"
+
+            # Quantity Z-Score check
+            if payload.quantity:
+                q_mean, q_std = _zscore_stats(qtys)
+                q_z   = _zscore(payload.quantity, q_mean, q_std)
+                q_sev = _flag_severity(q_z)
+                if q_sev:
+                    warnings.append(
+                        f"Quantity {payload.quantity} is unusually high "
+                        f"(avg {q_mean:.1f} +/- {q_std:.1f} over last {len(past)} purchases). "
+                        f"Bulk purchase?"
+                    )
+                    flags.append({"field": "quantity", "z_score": round(q_z, 2), "severity": q_sev})
+                    if q_sev == "critical": severity = "critical"
+                    elif q_sev == "warning" and severity == "normal": severity = "warning"
+
+    elif payload.entry_type == "expense" and payload.category:
+        past = await db.expenses.find(
+            {"category": payload.category, "is_void": {"$ne": True}},
+            {"_id": 0, "amount": 1}
+        ).sort("created_at", -1).limit(_MAX_HISTORY).to_list(_MAX_HISTORY)
+
+        if len(past) >= _MIN_HISTORY and payload.total_amount:
+            amounts = [p["amount"] for p in past]
+            a_mean, a_std = _zscore_stats(amounts)
+            a_z   = _zscore(payload.total_amount, a_mean, a_std)
+            a_sev = _flag_severity(a_z)
+            if a_sev:
+                warnings.append(
+                    f"Rs.{payload.total_amount:,.0f} is unusually high for {payload.category} "
+                    f"(avg Rs.{a_mean:,.0f} +/- Rs.{a_std:,.0f} over last {len(past)} entries)."
+                )
+                flags.append({"field": "amount", "z_score": round(a_z, 2), "severity": a_sev})
+                severity = a_sev
+
+    # Persist to anomaly_flags collection for business intelligence
+    if flags:
+        await db.anomaly_flags.insert_one({
+            "id":         str(uuid.uuid4()),
+            "entry_type": payload.entry_type,
+            "item_id":    payload.item_id,
+            "item_name":  payload.item_name,
+            "category":   payload.category,
+            "value":      payload.price_per_unit or payload.total_amount,
+            "quantity":   payload.quantity,
+            "flags":      flags,
+            "severity":   severity,
+            "user_id":    user["id"],
+            "user_name":  user.get("name", ""),
+            "confirmed":  False,
+            "created_at": iso(now_utc()),
+        })
+
+    return {
+        "warnings":     warnings,
+        "severity":     severity,
+        "is_suspicious": len(flags) > 0,
+        "flag_count":   len(flags),
+    }
+
 @api.get("/health")
 async def health():
     """Returns environment + DB name so the frontend banner is accurate."""

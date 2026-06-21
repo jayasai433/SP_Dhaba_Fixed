@@ -12,6 +12,7 @@ import { SKELETON_KEYS } from "@/lib/skeletons";
 import DuplicateWarningDialog from "@/components/DuplicateWarningDialog";
 import VoidDialog from "@/components/VoidDialog";
 import { useExpenses } from "@/hooks/useExpenses";
+import AnomalyWarningDialog from "@/components/AnomalyWarningDialog";
 
 // ── Mini summary card ─────────────────────────────────────────────────────────
 function SummaryCard({ label, value, testid, highlight }) {
@@ -39,6 +40,7 @@ export default function Expenses() {
     validateAndSave, saving,
     dupDialog, confirmDuplicate, cancelDuplicate,
     voidDialogId, setVoidDialogId, handleVoidConfirm,
+    anomalyWarnings, anomalySeverity, anomalyDialog, confirmAnomaly, cancelAnomaly,
   } = useExpenses();
 
   return (
@@ -46,6 +48,13 @@ export default function Expenses() {
       <DuplicateWarningDialog
         open={dupDialog} onConfirm={confirmDuplicate} onCancel={cancelDuplicate}
         message="An expense with the same category and amount was just recorded seconds ago. Did you intend to enter this again?"
+      />
+      <AnomalyWarningDialog
+        open={anomalyDialog}
+        warnings={anomalyWarnings}
+        severity={anomalySeverity}
+        onConfirm={confirmAnomaly}
+        onCancel={cancelAnomaly}
       />
       <VoidDialog
         open={!!voidDialogId} onConfirm={handleVoidConfirm}

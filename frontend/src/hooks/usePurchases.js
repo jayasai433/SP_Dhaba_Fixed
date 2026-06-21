@@ -41,6 +41,11 @@ export function usePurchases() {
 
   useEffect(() => { load(); }, [load]);
 
+  const [anomalyWarnings, setAnomalyWarnings] = useState([]);
+  const [anomalySeverity, setAnomalySeverity] = useState('warning');
+  const [anomalyDialog, setAnomalyDialog] = useState(false);
+  const [pendingSave, setPendingSave] = useState(false);
+
   const { save, saving, dupDialog, confirmDuplicate, cancelDuplicate } = useSave(
     () => api.post("/purchases", {
       item_id: itemId, date,
@@ -49,20 +54,41 @@ export function usePurchases() {
     }),
     {
       successMessage: "Purchase saved",
-      onSuccess: () => { setQty(""); setPrice(""); setErrors({}); load(); },
+      onSuccess: () => { setQty(""); setPrice(""); setErrors({}); setAnomalyWarnings([]); load(); },
     }
   );
 
-  const validateAndSave = (e) => {
+  const validateAndSave = async (e) => {
     e.preventDefault();
     const next = {};
-    if (!itemId)                          next.item  = "Please select an item";
-    if (!(parseFloat(qty) > 0))           next.qty   = "Quantity must be greater than 0";
+    if (!itemId)                            next.item  = "Please select an item";
+    if (!(parseFloat(qty) > 0))             next.qty   = "Quantity must be greater than 0";
     if (!price || !(parseFloat(price) > 0)) next.price = "Price must be greater than ₹0";
     setErrors(next);
     if (Object.keys(next).length) { toast.error(Object.values(next)[0]); return; }
+
+    // Anomaly check before saving
+    try {
+      const { data } = await api.post("/anomaly-check", {
+        entry_type: "purchase",
+        item_id: itemId,
+        item_name: items.find(i => i.id === itemId)?.name,
+        quantity: parseFloat(qty),
+        price_per_unit: parseFloat(price),
+      });
+      if (data.is_suspicious) {
+        setAnomalyWarnings(data.warnings);
+        setAnomalySeverity(data.severity);
+        setAnomalyDialog(true);
+        setPendingSave(true);
+        return;
+      }
+    } catch { /* anomaly check failed — save normally */ }
     save();
   };
+
+  const confirmAnomaly = () => { setAnomalyDialog(false); setPendingSave(false); save(); };
+  const cancelAnomaly  = () => { setAnomalyDialog(false); setPendingSave(false); };
 
   const handleVoidConfirm = async (reason) => {
     const id = voidDialogId;
@@ -92,5 +118,6 @@ export function usePurchases() {
     validateAndSave, saving, load,
     dupDialog, confirmDuplicate, cancelDuplicate,
     voidDialogId, setVoidDialogId, handleVoidConfirm,
+    anomalyWarnings, anomalySeverity, anomalyDialog, confirmAnomaly, cancelAnomaly,
   };
 }
