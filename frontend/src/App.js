@@ -63,7 +63,7 @@ export default function App() {
 
           <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
             <Route path="/dashboard" element={
-              <ProtectedRoute roles={["admin", "viewer"]}><ErrorBoundary><Dashboard /></ErrorBoundary></ProtectedRoute>
+              <ProtectedRoute roles={["admin", "viewer", "staff"]}><ErrorBoundary><Dashboard /></ErrorBoundary></ProtectedRoute>
             } />
             <Route path="/stock" element={<ErrorBoundary><LiveStock /></ErrorBoundary>} />
             <Route path="/alerts" element={<ErrorBoundary><Alerts /></ErrorBoundary>} />

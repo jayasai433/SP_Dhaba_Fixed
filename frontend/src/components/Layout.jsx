@@ -16,7 +16,7 @@ import StagingBanner from "@/components/StagingBanner";
 import { Badge } from "@/components/ui/badge";
 
 const NAV = [
-  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["admin", "viewer"] },
+  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["admin", "viewer", "staff"] },
   { to: "/stock", label: "Live Stock", icon: Boxes, roles: ["admin", "staff", "viewer"] },
   { to: "/alerts", label: "Alerts", icon: BellRing, roles: ["admin", "staff", "viewer"], badge: true },
   { to: "/purchases", label: "Purchases", icon: ShoppingCart, roles: ["admin", "staff"] },
@@ -33,7 +33,7 @@ const NAV = [
 
 const MOBILE_NAV_BY_ROLE = {
   admin: ["/dashboard", "/stock", "/purchases", "/sales", "/closing-stock"],
-  staff: ["/stock", "/purchases", "/closing-stock", "/sales", "/expenses", "/display"],
+  staff: ["/dashboard", "/stock", "/purchases", "/closing-stock", "/sales", "/expenses", "/display"],
   viewer: ["/dashboard", "/stock", "/alerts", "/pnl", "/display"],
 };
 
