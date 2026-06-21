@@ -216,6 +216,7 @@ class SalaryIn(BaseModel):
     basic_salary: float = Field(ge=0)
     advance_paid: float = Field(ge=0, default=0)
     notes: Optional[str] = ""
+    joining_date: Optional[str] = None  # YYYY-MM-DD — if set, salary is prorated from this date
 
 class SalaryPayIn(BaseModel):
     paid_date: str  # YYYY-MM-DD
@@ -1087,12 +1088,30 @@ async def create_salary(payload: SalaryIn, user=Depends(require_roles("admin")))
     existing = await db.salaries.find_one({"staff_id": payload.staff_id, "month": payload.month})
     if existing:
         raise HTTPException(409, "Salary already recorded for this staff for this month")
-    net = round(payload.basic_salary - payload.advance_paid, 2)
+    # ── Prorate calculation if staff joined mid-month ──────────────────────────
+    import calendar as _cal
+    year, mon = map(int, payload.month.split("-"))
+    days_in_month = _cal.monthrange(year, mon)[1]
+    working_days = days_in_month  # default: full month
+    prorated_salary = float(payload.basic_salary)
+
+    if payload.joining_date:
+        joining = _date.fromisoformat(payload.joining_date)
+        # Only prorate if joining date is within the salary month
+        if joining.year == year and joining.month == mon and joining.day > 1:
+            working_days = days_in_month - joining.day + 1
+            prorated_salary = round(float(payload.basic_salary) * working_days / days_in_month, 2)
+
+    net = round(prorated_salary - float(payload.advance_paid), 2)
     doc = {
         "id": str(uuid.uuid4()),
         "staff_id": payload.staff_id,
         "month": payload.month,
         "basic_salary": float(payload.basic_salary),
+        "prorated_salary": prorated_salary,
+        "working_days": working_days,
+        "days_in_month": days_in_month,
+        "joining_date": payload.joining_date or None,
         "advance_paid": float(payload.advance_paid),
         "net_payable": net,
         "paid_date": None,
