@@ -17,14 +17,17 @@ import { Badge } from "@/components/ui/badge";
 
 const NAV = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["admin", "viewer", "staff"] },
-  { to: "/stock", label: "Live Stock", icon: Boxes, roles: ["admin", "staff", "viewer"] },
+  // Live Stock renamed/repurposed — shows consumption estimates not live counts
+  { to: "/stock", label: "Stock Tracker", icon: Boxes, roles: ["admin", "staff", "viewer"] },
   // Alerts hidden — chef communicates stock needs manually (re-enable in v2.0)
   // { to: "/alerts", label: "Alerts", icon: BellRing, roles: ["admin", "staff", "viewer"], badge: true },
   { to: "/purchases", label: "Purchases", icon: ShoppingCart, roles: ["admin", "staff"] },
-  { to: "/closing-stock", label: "Closing Stock", icon: ClipboardCheck, roles: ["admin", "staff"] },
+  // Closing Stock hidden — not counting manually, estimation via purchase history (v2.0)
+  // { to: "/closing-stock", label: "Closing Stock", icon: ClipboardCheck, roles: ["admin", "staff"] },
   { to: "/sales", label: "Sales", icon: IndianRupee, roles: ["admin", "staff"] },
   { to: "/expenses", label: "Expenses", icon: Wallet, roles: ["admin", "staff"] },
-  { to: "/wastage", label: "Wastage", icon: Trash2, roles: ["admin", "staff", "viewer"] },
+  // Wastage hidden — chef communicates manually (re-enable in v2.0)
+  // { to: "/wastage", label: "Wastage", icon: Trash2, roles: ["admin", "staff", "viewer"] },
   { to: "/salaries", label: "Salaries", icon: Users, roles: ["admin"] },
   { to: "/pnl", label: "P&L Statement", icon: LineChart, roles: ["admin", "viewer"] },
   { to: "/items", label: "Item Master", icon: Package, roles: ["admin"] },
@@ -33,8 +36,8 @@ const NAV = [
 ];
 
 const MOBILE_NAV_BY_ROLE = {
-  admin: ["/dashboard", "/stock", "/purchases", "/sales", "/closing-stock"],
-  staff: ["/dashboard", "/stock", "/purchases", "/closing-stock", "/sales", "/expenses", "/display"],
+  admin: ["/dashboard", "/stock", "/purchases", "/sales", "/expenses"],
+  staff: ["/dashboard", "/stock", "/purchases", "/sales", "/expenses", "/display"],
   viewer: ["/dashboard", "/stock", "/pnl", "/display"],
 };
 
