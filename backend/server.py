@@ -1,6 +1,8 @@
 from dotenv import load_dotenv
 from pathlib import Path
 
+# Build: db65bac — consumption-rates + smart-reorder endpoints active
+
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
