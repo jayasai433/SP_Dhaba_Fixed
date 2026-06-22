@@ -87,23 +87,23 @@ export default function App() {
             <Route path="/pnl" element={
               <ProtectedRoute roles={["admin", "viewer"]}><ErrorBoundary><PnL /></ErrorBoundary></ProtectedRoute>
             } />
-            {/* Wastage hidden — v2.0 */}
-            {/* <Route path="/wastage" element={
+            {/* Wastage hidden — v2.0
+            <Route path="/wastage" element={
               <ProtectedRoute roles={["admin", "staff", "viewer"]}><ErrorBoundary><Wastage /></ErrorBoundary></ProtectedRoute>
-            } />
+            } /> */}
             <Route path="/settings" element={
               <ProtectedRoute roles={["admin"]}><ErrorBoundary><Settings /></ErrorBoundary></ProtectedRoute>
             } />
             <Route path="/display" element={
               <ProtectedRoute roles={["admin", "viewer", "staff"]}><ErrorBoundary><DisplayMode /></ErrorBoundary></ProtectedRoute>
             } />
-            {/* Closing stock hidden — v2.0 */}
-            {/* <Route path="/closing-stock" element={
+            {/* Closing stock hidden — v2.0
+            <Route path="/closing-stock" element={
               <ProtectedRoute roles={["admin", "staff", "viewer"]}><ErrorBoundary><ClosingStock /></ErrorBoundary></ProtectedRoute>
             } />
             <Route path="/inventory-insights" element={
               <ProtectedRoute roles={["admin", "viewer"]}><ErrorBoundary><InventoryInsights /></ErrorBoundary></ProtectedRoute>
-            } />
+            } /> */}
           </Route>
 
           <Route path="*" element={<ErrorBoundary><Navigate to="/" replace /></ErrorBoundary>} />
