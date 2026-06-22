@@ -1,136 +1,162 @@
+/**
+ * Stock Tracker — shows estimated stock remaining based on purchase history.
+ * No manual counting needed — calculated from purchase dates + quantities.
+ */
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { Link } from "react-router-dom";
 import api from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
-import { Search, Package2 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Search, Package2, AlertOctagon, Flame, Clock, CheckCircle2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SKELETON_KEYS } from "@/lib/skeletons";
+import logger from "@/lib/logger";
 
+// Status config based on consumption tracker
 const STATUS_META = {
-  in: { label: "In Stock", color: "bg-[#E8F5E9] border-[#2E7D32]/20 text-[#2E7D32]", dot: "bg-[#2E7D32]" },
-  low: { label: "Low Stock", color: "bg-[#FFFDE7] border-[#F57F17]/30 text-[#A35E00]", dot: "bg-[#F57F17]" },
-  out: { label: "Out of Stock", color: "bg-[#FFEBEE] border-[#C62828]/20 text-[#C62828]", dot: "bg-[#C62828]" },
+  overdue:           { label: "Reorder Now",  dot: "bg-red-600",    card: "border-red-200 bg-red-50",    icon: AlertOctagon, iconColor: "text-red-600" },
+  urgent:            { label: "Reorder Today", dot: "bg-orange-500", card: "border-orange-200 bg-orange-50", icon: Flame,        iconColor: "text-orange-600" },
+  soon:              { label: "Reorder Soon",  dot: "bg-amber-500",  card: "border-amber-200 bg-amber-50",  icon: Clock,        iconColor: "text-amber-600" },
+  ok:                { label: "OK",            dot: "bg-green-500",  card: "border-green-200 bg-green-50",  icon: CheckCircle2, iconColor: "text-green-600" },
+  unknown:           { label: "Unknown",       dot: "bg-slate-400",  card: "border-slate-200 bg-slate-50",  icon: Package2,     iconColor: "text-slate-400" },
+  insufficient_data: { label: "No Data",       dot: "bg-slate-300",  card: "border-slate-200 bg-white",     icon: Package2,     iconColor: "text-slate-300" },
 };
 
-import { useConsumption } from "@/hooks/useConsumption";
-import ConsumptionBadge from "@/components/ConsumptionBadge";
+const STATUS_ORDER = { overdue: 0, urgent: 1, soon: 2, ok: 3, unknown: 4, insufficient_data: 5 };
 
 export default function LiveStock() {
-  const [stock, setStock] = useState(null);
-  const [error, setError] = useState(false);
-  const [q, setQ] = useState("");
-  const [cat, setCat] = useState("all");
-  const [status, setStatus] = useState("all");
+  const [rates, setRates]   = useState(null);
+  const [error, setError]   = useState(false);
+  const [q, setQ]           = useState("");
+  const [statusF, setStatusF] = useState("all");
 
-  const load = useCallback(() => api.get("/stock").then(({ data }) => setStock(data)).catch(() => setError(true)), []);
-  useEffect(() => { load(); const t = setInterval(load, 60000); return () => clearInterval(t); }, [load]);
+  const load = useCallback(() => {
+    api.get("/consumption-rates")
+      .then(({ data }) => setRates(data.rates || []))
+      .catch((err) => { logger.error("Stock tracker load failed:", err); setError(true); });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const { rates: consumptionRates } = useConsumption();
-
-  const categories = useMemo(() => {
-    if (!stock) return [];
-    return Array.from(new Set(stock.map((s) => s.category))).sort();
-  }, [stock]);
+  useEffect(() => { load(); }, [load]);
 
   const filtered = useMemo(() => {
-    if (!stock) return [];
-    return stock.filter((s) => s.is_active)
-      .filter((s) => !q || s.name.toLowerCase().includes(q.toLowerCase()))
-      .filter((s) => cat === "all" || s.category === cat)
-      .filter((s) => status === "all" || s.status === status);
-  }, [stock, q, cat, status]);
+    if (!rates) return [];
+    return rates
+      .filter((r) => {
+        const matchQ      = !q || r.item_name.toLowerCase().includes(q.toLowerCase());
+        const matchStatus = statusF === "all" || r.status === statusF;
+        return matchQ && matchStatus;
+      })
+      .sort((a, b) =>
+        (STATUS_ORDER[a.status] ?? 9) - (STATUS_ORDER[b.status] ?? 9)
+      );
+  }, [rates, q, statusF]);
 
-  if (error) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 text-slate-500">
-        <div className="text-4xl mb-3">📦</div>
-        <p className="font-medium">Could not load stock data</p>
-        <p className="text-sm mt-1">Check your connection and refresh the page</p>
-      </div>
-    );
-  }
-
-  if (!stock) {
-    return (
-      <div className="space-y-4">
-        <Skeleton className="h-10 w-64" />
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-          {SKELETON_KEYS.slice(0, 8).map((k) => <Skeleton key={k} className="h-28 rounded-2xl" />)}
-        </div>
-      </div>
-    );
-  }
+  if (error) return (
+    <div className="text-center py-20 text-slate-500">
+      <Package2 className="mx-auto mb-3 text-orange-300" size={40} />
+      <p className="font-medium">Could not load stock data</p>
+      <button onClick={load} className="mt-3 text-sm text-orange-600 underline">Try again</button>
+    </div>
+  );
 
   return (
     <div className="space-y-6 animate-fade-up" data-testid="live-stock-page">
-      <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
-        <div>
-          <div className="text-xs font-semibold tracking-widest uppercase text-orange-700">Inventory</div>
-          <h1 className="font-display text-3xl sm:text-4xl font-bold text-slate-900">Live Stock</h1>
-          <p className="text-slate-600 text-sm mt-1">Auto-refreshes every 60 seconds</p>
-        </div>
-        <div className="flex flex-col sm:flex-row gap-2">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-            <Input data-testid="stock-search" value={q} onChange={(e) => setQ(e.target.value)}
-              placeholder="Search items..." className="pl-9 h-11 w-full sm:w-56 rounded-lg bg-white" />
-          </div>
-          <Select value={cat} onValueChange={setCat}>
-            <SelectTrigger data-testid="stock-filter-category" className="h-11 w-full sm:w-44 rounded-lg bg-white"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Categories</SelectItem>
-              {categories.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <Select value={status} onValueChange={setStatus}>
-            <SelectTrigger data-testid="stock-filter-status" className="h-11 w-full sm:w-36 rounded-lg bg-white"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="in">In Stock</SelectItem>
-              <SelectItem value="low">Low Stock</SelectItem>
-              <SelectItem value="out">Out of Stock</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+      <div>
+        <div className="text-xs font-semibold tracking-widest uppercase text-orange-700">Inventory</div>
+        <h1 className="font-display text-3xl sm:text-4xl font-bold text-slate-900">Stock Tracker</h1>
+        <p className="text-sm text-slate-500 mt-1">
+          Estimated remaining stock based on purchase history — no manual counting needed.
+        </p>
       </div>
 
-      {filtered.length === 0 ? (
-        <Card className="rounded-2xl border-dashed border-2 border-orange-200">
-          <CardContent className="p-10 text-center">
-            <Package2 className="mx-auto text-orange-300" size={48} />
-            <p className="mt-3 text-slate-600">No items match your filters.</p>
-          </CardContent>
-        </Card>
+      {/* Filters */}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1">
+          <Search size={16} className="absolute left-3 top-3 text-slate-400" />
+          <Input data-testid="stock-search" value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search items..." className="pl-9 h-11 bg-white" />
+        </div>
+        <Select value={statusF} onValueChange={setStatusF}>
+          <SelectTrigger className="h-11 w-full sm:w-44 bg-white">
+            <SelectValue placeholder="All statuses" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Statuses</SelectItem>
+            <SelectItem value="overdue">Reorder Now</SelectItem>
+            <SelectItem value="urgent">Reorder Today</SelectItem>
+            <SelectItem value="soon">Reorder Soon</SelectItem>
+            <SelectItem value="ok">OK</SelectItem>
+            <SelectItem value="insufficient_data">No Data Yet</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Grid */}
+      {rates === null ? (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+          {SKELETON_KEYS.slice(0, 8).map((k) => (
+            <Skeleton key={k} className="h-32 rounded-2xl" />
+          ))}
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="text-center py-16 text-slate-500">
+          <Package2 className="mx-auto mb-3 text-orange-300" size={40} />
+          <p className="font-medium">No items found</p>
+          <p className="text-sm mt-1">Try a different search or filter.</p>
+        </div>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3" data-testid="stock-grid">
-          {filtered.map((s) => {
-            const meta = STATUS_META[s.status];
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3"
+          data-testid="stock-grid">
+          {filtered.map((r) => {
+            const meta = STATUS_META[r.status] || STATUS_META.unknown;
+            const Icon = meta.icon;
             return (
-              <Link to={`/purchases?item=${s.item_id}`} key={s.item_id}
-                data-testid={`stock-card-${s.item_id}`}
-                className={cn("p-4 rounded-2xl border shadow-sm hover:shadow-md transition-all", meta.color)}>
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="text-[11px] uppercase tracking-wider opacity-80">{s.category}</div>
-                    <div className="font-display font-semibold text-base text-slate-900 truncate">{s.name}</div>
+              <Link to={`/purchases?item=${r.item_id}`} key={r.item_id}
+                data-testid={`stock-card-${r.item_id}`}
+                className={`p-4 rounded-2xl border transition-shadow hover:shadow-md ${meta.card}`}>
+
+                {/* Item name + status */}
+                <div className="flex items-start justify-between gap-1 mb-2">
+                  <div className="font-display font-semibold text-sm text-slate-900 leading-tight">
+                    {r.item_name}
                   </div>
-                  <div className={cn("h-2.5 w-2.5 rounded-full mt-1.5 shrink-0", meta.dot)} />
+                  <Icon size={14} className={`shrink-0 mt-0.5 ${meta.iconColor}`} />
                 </div>
-                <div className="mt-3 flex items-baseline gap-1">
-                  <span className="font-display text-2xl font-bold tabular-nums text-slate-900">{s.qty_left}</span>
-                  <span className="text-xs text-slate-600">{s.unit}</span>
-                </div>
-                <div className="mt-1 text-[11px] flex items-center justify-between">
-                  {/* Reorder level hidden until v2.0 alerts feature is re-enabled */}
-                  <Badge className={cn("rounded-full text-[10px] py-0", meta.color, "border")}>{meta.label}</Badge>
-                </div>
-                {/* Consumption rate badge */}
-                <div className="mt-2" onClick={(e) => e.preventDefault()}>
-                  <ConsumptionBadge rate={consumptionRates[s.item_id]} />
+
+                {/* Estimated remaining */}
+                {r.est_remaining !== undefined && r.est_remaining !== null ? (
+                  <div className="font-display font-bold text-2xl tabular-nums text-slate-900">
+                    {r.est_remaining <= 0 ? "0" : r.est_remaining}
+                    <span className="text-sm font-normal text-slate-500 ml-1">{r.unit}</span>
+                  </div>
+                ) : (
+                  <div className="text-xs text-slate-400 italic mt-1">
+                    Need 2+ purchases
+                  </div>
+                )}
+
+                {/* Days left */}
+                {r.est_days_remaining !== null && r.est_days_remaining !== undefined && (
+                  <div className="text-xs text-slate-500 mt-1">
+                    ~{r.est_days_remaining > 0 ? r.est_days_remaining : 0} days left
+                  </div>
+                )}
+
+                {/* Daily rate */}
+                {r.daily_rate && (
+                  <div className="text-xs text-slate-400 mt-0.5">
+                    {r.daily_rate} {r.unit}/day avg
+                  </div>
+                )}
+
+                {/* Status badge */}
+                <div className="mt-2">
+                  <span className={`inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide ${meta.iconColor}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${meta.dot}`} />
+                    {meta.label}
+                  </span>
                 </div>
               </Link>
             );
