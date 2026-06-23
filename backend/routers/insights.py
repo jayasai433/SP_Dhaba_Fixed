@@ -149,8 +149,8 @@ async def smart_reorder(user=Depends(get_current_user)):
         return {"insight": insight, "cached": False}
 
     except Exception as e:
-        logging.warning(f"Smart reorder Groq call failed: {e}")
-        return {"insight": None, "cached": False}
+        logging.error(f"Smart reorder Groq call failed: {type(e).__name__}: {e}")
+        return {"insight": None, "cached": False, "error": str(e)}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -319,6 +319,6 @@ THIS MONTH:
         return {"insight": insight, "cached": False, "date": today}
 
     except Exception as e:
-        logging.warning(f"Daily digest Groq call failed: {e}")
-        return {"insight": None, "cached": False}
+        logging.error(f"Daily digest Groq call failed: {type(e).__name__}: {e}")
+        return {"insight": None, "cached": False, "error": str(e)}
 
