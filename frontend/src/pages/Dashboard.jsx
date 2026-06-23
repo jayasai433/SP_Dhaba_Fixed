@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import logger from "@/lib/logger";
 import SmartReorderCard from "@/components/SmartReorderCard";
+import DailyDigestCard from "@/components/DailyDigestCard";
 import api from "@/lib/api";
 import { inr, fmtDate, todayIST } from "@/lib/format";
 import { Card, CardContent } from "@/components/ui/card";
@@ -454,6 +455,9 @@ export default function Dashboard() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Groq Daily Digest — morning briefing, cached daily */}
+      <DailyDigestCard />
 
       {/* Smart Reorder — Groq-powered, hides if unavailable */}
       <SmartReorderCard />

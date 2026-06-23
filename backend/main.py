@@ -90,6 +90,17 @@ async def startup():
                 await asyncio.sleep(5 * attempt)  # 5s, 10s backoff
             else:
                 logger.error("All seed attempts failed. App will start but may have missing data.")
+    # ── Ensure indexes for consumption rate queries ──────────────────────────
+    try:
+        from core.db import db as _db
+        await _db.purchases.create_index([("item_id", 1), ("date", -1)], background=True)
+        await _db.purchases.create_index([("is_void", 1), ("item_id", 1)], background=True)
+        await _db.expenses.create_index([("category", 1), ("created_at", -1)], background=True)
+        await _db.items.create_index([("is_active", 1)], background=True)
+        logger.info("Indexes ensured for consumption queries.")
+    except Exception as e:
+        logger.warning(f"Index creation failed (non-critical): {e}")
+
     if os.environ.get("ENABLE_SCHEDULER", "true").lower() == "true":
         start_scheduler()
 
