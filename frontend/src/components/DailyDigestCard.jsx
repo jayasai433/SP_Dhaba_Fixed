@@ -33,7 +33,7 @@ export default function DailyDigestCard() {
 
   useEffect(() => { load(); }, [load]);
 
-  if (!loading && !insight) return null;
+  // Always render — show message if no insight
 
   return (
     <Card className="rounded-2xl border-orange-900/10 shadow-sm bg-gradient-to-br from-amber-50 to-orange-50">
@@ -64,13 +64,21 @@ export default function DailyDigestCard() {
           </div>
         ) : (
           <>
-            <p className="text-slate-700 text-sm leading-relaxed">{insight}</p>
-            <div className="flex items-center gap-1 mt-3">
-              <Sparkles size={10} className="text-orange-400" />
-              <p className="text-xs text-slate-400">
-                {cached ? "Cached · " : ""}Powered by Groq AI · Updates daily
-              </p>
-            </div>
+            {insight ? (
+            <>
+              <p className="text-slate-700 text-sm leading-relaxed">{insight}</p>
+              <div className="flex items-center gap-1 mt-3">
+                <Sparkles size={10} className="text-orange-400" />
+                <p className="text-xs text-slate-400">
+                  {cached ? "Cached · " : ""}Powered by Groq AI · Updates daily
+                </p>
+              </div>
+            </>
+          ) : (
+            <p className="text-sm text-slate-500 italic">
+              Start recording daily sales and purchases — Groq will give you a personalised morning briefing based on yesterday's performance, profit margins, and stock status.
+            </p>
+          )}
           </>
         )}
       </CardContent>

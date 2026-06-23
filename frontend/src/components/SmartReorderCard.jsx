@@ -26,8 +26,7 @@ export default function SmartReorderCard() {
     }
   };
 
-  // Don't render if no insight and not loading
-  if (!loading && !insight) return null;
+  // Always render — show message if no insight
 
   return (
     <Card className="rounded-2xl border-orange-900/10 shadow-sm bg-gradient-to-br from-orange-50 to-amber-50">
@@ -54,7 +53,7 @@ export default function SmartReorderCard() {
             <div className="h-4 bg-orange-100 rounded animate-pulse w-4/5" />
             <div className="h-4 bg-orange-100 rounded animate-pulse w-3/5" />
           </div>
-        ) : (
+        ) : insight ? (
           <>
             <p className="text-slate-700 text-sm leading-relaxed">{insight}</p>
             <div className="flex items-center gap-1 mt-3">
@@ -64,6 +63,10 @@ export default function SmartReorderCard() {
               </p>
             </div>
           </>
+        ) : (
+          <p className="text-sm text-slate-500 italic">
+            Enter at least 2 purchases per item to get smart reorder advice. Groq will analyse your consumption patterns and suggest when to reorder.
+          </p>
         )}
       </CardContent>
     </Card>

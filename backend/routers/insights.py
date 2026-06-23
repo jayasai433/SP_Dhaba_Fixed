@@ -74,10 +74,34 @@ async def smart_reorder(user=Depends(get_current_user)):
         ]
 
         if not actionable and not ok_items:
-            return {
-                "insight": "Not enough purchase history yet to generate recommendations. Keep recording purchases!",
-                "cached": False
-            }
+            # Let Groq write a warm welcome/reminder even with no stock data
+            try:
+                async with httpx.AsyncClient(timeout=8) as client:
+                    resp = await client.post(
+                        "https://api.groq.com/openai/v1/chat/completions",
+                        headers={"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"},
+                        json={
+                            "model": "llama-3.1-8b-instant",
+                            "max_tokens": 100,
+                            "messages": [
+                                {
+                                    "role": "system",
+                                    "content": (
+                                        "You are a warm, encouraging business advisor for SP Royal Punjabi Family Dhaba. "
+                                        "Write one friendly sentence reminding the team to start recording purchases "
+                                        "so you can track stock and suggest reorders. Keep it warm and motivating. "
+                                        "No markdown, no bullet points."
+                                    )
+                                },
+                                {"role": "user", "content": "No purchase history recorded yet. Write a warm reminder."}
+                            ]
+                        }
+                    )
+                resp.raise_for_status()
+                msg = resp.json()["choices"][0]["message"]["content"].strip()
+                return {"insight": msg, "cached": False}
+            except Exception:
+                return {"insight": "Start recording your daily purchases — once you have data, I'll give you smart reorder advice tailored to SP Dhaba's consumption patterns.", "cached": False}
 
         lines = []
         if actionable:
@@ -188,6 +212,7 @@ async def daily_digest(user=Depends(get_current_user)):
         # Check if today has any entries
         no_sales_today     = today_pnl["revenue"] == 0
         no_purchases_today = today_pnl["cogs"] == 0
+        no_data_at_all     = yesterday_pnl["revenue"] == 0 and week_pnl["revenue"] == 0
 
         stock_lines = ""
         if urgent_items:
@@ -230,6 +255,37 @@ THIS MONTH:
 {stock_lines}
 {missing_lines}
 """
+
+        # If absolutely no data — let Groq write a warm welcome
+        if no_data_at_all:
+            try:
+                async with httpx.AsyncClient(timeout=8) as client:
+                    resp = await client.post(
+                        "https://api.groq.com/openai/v1/chat/completions",
+                        headers={"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"},
+                        json={
+                            "model": "llama-3.1-8b-instant",
+                            "max_tokens": 120,
+                            "messages": [
+                                {
+                                    "role": "system",
+                                    "content": (
+                                        "You are a warm business advisor for SP Royal Punjabi Family Dhaba, "
+                                        "an Indian roadside restaurant. Write a short 2-sentence welcome message "
+                                        "encouraging the team to start recording daily sales and purchases. "
+                                        "Be warm, motivating, and specific to a dhaba. No markdown."
+                                    )
+                                },
+                                {"role": "user", "content": "New dhaba app, no data recorded yet. Write a warm welcome."}
+                            ]
+                        }
+                    )
+                resp.raise_for_status()
+                msg = resp.json()["choices"][0]["message"]["content"].strip()
+                _digest_cache = {"text": msg, "date": today}
+                return {"insight": msg, "cached": False, "date": today}
+            except Exception:
+                return {"insight": "Welcome to SP Dhaba Operations Manager! Start by recording today\'s sales and purchases — I\'ll give you daily business insights as your data grows.", "cached": False, "date": today}
 
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.post(
