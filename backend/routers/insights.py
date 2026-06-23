@@ -15,7 +15,7 @@ from services.consumption import get_consumption_rates
 router = APIRouter()
 
 # ── Groq cache — 1 hour TTL ───────────────────────────────────────────────────
-_reorder_cache: dict = {"text": None, "ts": 0}
+_reorder_cache: dict = {}  # keyed by user_id
 _CACHE_TTL = 60 * 60  # 1 hour
 
 STATUS_ORDER = {"overdue": 0, "urgent": 1, "soon": 2, "ok": 3,
@@ -53,8 +53,9 @@ async def consumption_rates(user=Depends(get_current_user)):
 async def smart_reorder(user=Depends(get_current_user)):
     global _reorder_cache
 
-    if _reorder_cache["text"] and (time.time() - _reorder_cache["ts"]) < _CACHE_TTL:
-        return {"insight": _reorder_cache["text"], "cached": True}
+    user_cache = _reorder_cache.get(user["id"], {})
+    if user_cache.get("text") and (time.time() - user_cache["ts"]) < _CACHE_TTL:
+        return {"insight": user_cache["text"], "cached": True}
 
     groq_key = os.environ.get("GROQ_API_KEY")
     if not groq_key:
@@ -82,14 +83,14 @@ async def smart_reorder(user=Depends(get_current_user)):
                         headers={"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"},
                         json={
                             "model": "llama-3.1-8b-instant",
-                            "max_tokens": 100,
+                            "max_tokens": 40,
                             "messages": [
                                 {
                                     "role": "system",
                                     "content": (
-                                        "You are a warm, encouraging business advisor for SP Royal Punjabi Family Dhaba. "
-                                        "Write one friendly sentence reminding the team to start recording purchases "
-                                        "so you can track stock and suggest reorders. Keep it warm and motivating. "
+                                        f"You are a warm business advisor for SP Royal Punjabi Family Dhaba. "
+                                        f"You are speaking to {user.get('name', 'the team')} who is a {user.get('role', 'staff')} user. "
+                                        "One line max 12 words. Warm nudge to record purchases. No markdown."
                                         "No markdown, no bullet points."
                                     )
                                 },
@@ -125,14 +126,20 @@ async def smart_reorder(user=Depends(get_current_user)):
                 },
                 json={
                     "model": "llama-3.1-8b-instant",
-                    "max_tokens": 250,
+                    "max_tokens": 60,
                     "messages": [
                         {
                             "role": "system",
                             "content": (
-                                "You are a practical inventory advisor for SP Royal Punjabi Family Dhaba, "
-                                "an Indian roadside restaurant. Give sharp, actionable reorder advice in "
-                                "2-4 sentences. Be specific — name items, mention quantities, suggest timing. "
+                                f"You are a practical inventory advisor for SP Royal Punjabi Family Dhaba. "
+                                f"You are speaking to {user.get('name', 'the team')} who is a {user.get('role', 'staff')} user. "
+                                + (
+                                    "1-2 lines max. Name items, say when to buy. Max 20 words. " 
+                                    "Mention profit impact where relevant. "
+                                    if user.get('role') == 'admin' else
+                                    "Give simple, clear reminders about what needs to be bought. "
+                                    "1 line. What to buy. Max 10 words. Simple." 
+                                ) +
                                 "Write in plain English. No markdown, no bullet points, no greetings."
                             )
                         },
@@ -145,7 +152,7 @@ async def smart_reorder(user=Depends(get_current_user)):
             )
         resp.raise_for_status()
         insight = resp.json()["choices"][0]["message"]["content"].strip()
-        _reorder_cache = {"text": insight, "ts": time.time()}
+        _reorder_cache[user["id"]] = {"text": insight, "ts": time.time()}
         return {"insight": insight, "cached": False}
 
     except Exception as e:
@@ -168,7 +175,7 @@ async def refresh_smart_reorder(user=Depends(get_current_user)):
 import pytz as _pytz
 from datetime import datetime as _dt
 
-_digest_cache: dict = {"text": None, "date": None}
+_digest_cache: dict = {}  # keyed by user_id
 
 @router.get("/daily-digest")
 async def daily_digest(user=Depends(get_current_user)):
@@ -178,8 +185,9 @@ async def daily_digest(user=Depends(get_current_user)):
     today    = _dt.now(ist).strftime("%Y-%m-%d")
 
     # Return cached if same day
-    if _digest_cache["text"] and _digest_cache["date"] == today:
-        return {"insight": _digest_cache["text"], "cached": True, "date": today}
+    user_digest = _digest_cache.get(user["id"], {})
+    if user_digest.get("text") and user_digest.get("date") == today:
+        return {"insight": user_digest["text"], "cached": True, "date": today}
 
     groq_key = os.environ.get("GROQ_API_KEY")
     if not groq_key:
@@ -265,15 +273,14 @@ THIS MONTH:
                         headers={"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"},
                         json={
                             "model": "llama-3.1-8b-instant",
-                            "max_tokens": 120,
+                            "max_tokens": 40,
                             "messages": [
                                 {
                                     "role": "system",
                                     "content": (
-                                        "You are a warm business advisor for SP Royal Punjabi Family Dhaba, "
-                                        "an Indian roadside restaurant. Write a short 2-sentence welcome message "
-                                        "encouraging the team to start recording daily sales and purchases. "
-                                        "Be warm, motivating, and specific to a dhaba. No markdown."
+                                        f"You are a warm business advisor for SP Royal Punjabi Family Dhaba. "
+                                        f"You are speaking to {user.get('name', 'the team')} who is a {user.get('role', 'staff')} user. "
+                                        "One line, max 15 words. Welcome, encourage to record sales today. No markdown."
                                     )
                                 },
                                 {"role": "user", "content": "New dhaba app, no data recorded yet. Write a warm welcome."}
@@ -282,7 +289,7 @@ THIS MONTH:
                     )
                 resp.raise_for_status()
                 msg = resp.json()["choices"][0]["message"]["content"].strip()
-                _digest_cache = {"text": msg, "date": today}
+                _digest_cache[user["id"]] = {"text": msg, "date": today}
                 return {"insight": msg, "cached": False, "date": today}
             except Exception:
                 return {"insight": "Welcome to SP Dhaba Operations Manager! Start by recording today\'s sales and purchases — I\'ll give you daily business insights as your data grows.", "cached": False, "date": today}
@@ -296,17 +303,21 @@ THIS MONTH:
                 },
                 json={
                     "model": "llama-3.1-8b-instant",
-                    "max_tokens": 200,
+                    "max_tokens": 60,
                     "messages": [
                         {
                             "role": "system",
                             "content": (
-                                "You are a sharp business advisor for SP Royal Punjabi Family Dhaba, "
-                                "an Indian roadside restaurant. Give a 2-3 sentence morning briefing. "
-                                "If sales or purchases are missing for today, kindly remind Lokesh to enter them. "
-                                "If stock items are urgent/overdue, flag them clearly. "
-                                "Comment on profit margin and suggest one specific action. "
-                                "Be warm but direct. Plain English only. No markdown, no bullet points."
+                                f"You are a business advisor for SP Royal Punjabi Family Dhaba. "
+                                f"You are speaking to {user.get('name', 'the team')} who is a {user.get('role', 'staff')} user. "
+                                + (
+                                    "1-2 lines max. Lead with profit, flag one issue, one action. Max 25 words. " 
+                                    "Be direct and data-driven. " 
+                                    if user.get('role') in ('admin', 'viewer') else
+                                    "1 line max 15 words. Friendly reminder. Simple language. " 
+                                    "Keep it simple. " 
+                                ) +
+                                "Plain English only. No markdown, no bullet points."
                             )
                         },
                         {"role": "user", "content": context}
