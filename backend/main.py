@@ -90,14 +90,28 @@ async def startup():
                 await asyncio.sleep(5 * attempt)  # 5s, 10s backoff
             else:
                 logger.error("All seed attempts failed. App will start but may have missing data.")
-    # ── Ensure indexes for consumption rate queries ──────────────────────────
+    # ── Ensure all critical indexes ───────────────────────────────────────────
     try:
         from core.db import db as _db
-        await _db.purchases.create_index([("item_id", 1), ("date", -1)], background=True)
-        await _db.purchases.create_index([("is_void", 1), ("item_id", 1)], background=True)
-        await _db.expenses.create_index([("category", 1), ("created_at", -1)], background=True)
-        await _db.items.create_index([("is_active", 1)], background=True)
-        logger.info("Indexes ensured for consumption queries.")
+        # Consumption rate queries
+        await _db.purchases.create_index([("item_id", 1), ("date", -1)],      background=True)
+        await _db.purchases.create_index([("is_void", 1), ("item_id", 1)],    background=True)
+        await _db.expenses.create_index([("category", 1), ("created_at", -1)],background=True)
+        await _db.items.create_index([("is_active", 1)],                       background=True)
+        # Date range queries — purchases, sales, expenses pages
+        await _db.purchases.create_index([("date", -1)],                       background=True)
+        await _db.purchases.create_index([("created_at", -1)],                 background=True)
+        await _db.expenses.create_index([("date", -1)],                        background=True)
+        await _db.sales.create_index([("date", -1)],                           background=True)
+        # Auth — called on every single API request
+        await _db.users.create_index([("email", 1)],   unique=True,            background=True)
+        await _db.users.create_index([("id", 1)],      unique=True,            background=True)
+        # Item lookups
+        await _db.items.create_index([("name", 1)],                            background=True)
+        await _db.items.create_index([("id", 1)],      unique=True,            background=True)
+        # Anomaly check — sort by created_at
+        await _db.anomaly_flags.create_index([("created_at", -1)],            background=True)
+        logger.info("All critical indexes ensured.")
     except Exception as e:
         logger.warning(f"Index creation failed (non-critical): {e}")
 

@@ -1,3 +1,4 @@
+import React, { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useEffect } from "react";
 import { Toaster } from "@/components/ui/sonner";
@@ -8,20 +9,20 @@ import ErrorBoundary from "@/components/ErrorBoundary";
 import Layout from "@/components/Layout";
 import Login from "@/pages/Login";
 import Forbidden from "@/pages/Forbidden";
-import Dashboard from "@/pages/Dashboard";
-import LiveStock from "@/pages/LiveStock";
-import Alerts from "@/pages/Alerts";
-import Purchases from "@/pages/Purchases";
-import Sales from "@/pages/Sales";
-import Items from "@/pages/Items";
-import Settings from "@/pages/Settings";
-import DisplayMode    from "@/pages/DisplayMode";
-import ClosingStock       from "@/pages/ClosingStock";
-import InventoryInsights  from "@/pages/InventoryInsights";
-import Expenses from "@/pages/Expenses";
-import Salaries from "@/pages/Salaries";
-import PnL from "@/pages/PnL";
-import Wastage from "@/pages/Wastage";
+const Dashboard = lazy(() => import("@/pages/Dashboard"));
+const LiveStock = lazy(() => import("@/pages/LiveStock"));
+const Alerts = lazy(() => import("@/pages/Alerts"));
+const Purchases = lazy(() => import("@/pages/Purchases"));
+const Sales = lazy(() => import("@/pages/Sales"));
+const Items = lazy(() => import("@/pages/Items"));
+const Settings = lazy(() => import("@/pages/Settings"));
+const DisplayMode = lazy(() => import("@/pages/DisplayMode"));
+const ClosingStock = lazy(() => import("@/pages/ClosingStock"));
+const InventoryInsights = lazy(() => import("@/pages/InventoryInsights"));
+const Expenses = lazy(() => import("@/pages/Expenses"));
+const Salaries = lazy(() => import("@/pages/Salaries"));
+const PnL = lazy(() => import("@/pages/PnL"));
+const Wastage = lazy(() => import("@/pages/Wastage"));
 import "@/App.css";
 
 /**
@@ -56,7 +57,8 @@ export default function App() {
           <DynamicTitle />
           <BrowserRouter>
             <Toaster richColors position="top-right" />
-          <Routes>
+          <Suspense fallback={<div className="flex items-center justify-center min-h-screen"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-600" /></div>}>
+      <Routes>
           <Route path="/login" element={<ErrorBoundary><Login /></ErrorBoundary>} />
           <Route path="/forbidden" element={<ErrorBoundary><Forbidden /></ErrorBoundary>} />
           <Route path="/" element={<ErrorBoundary><RootRedirect /></ErrorBoundary>} />
@@ -108,6 +110,7 @@ export default function App() {
 
           <Route path="*" element={<ErrorBoundary><Navigate to="/" replace /></ErrorBoundary>} />
           </Routes>
+      </Suspense>
         </BrowserRouter>
       </BusinessProfileProvider>
     </AuthProvider>
