@@ -26,9 +26,9 @@ def _can_view_all(user: dict) -> bool:
 # Primary path uses MongoDB TTL collection so limits survive deploys and
 # work correctly across multiple Railway replicas.
 _fallback_attempts: dict = defaultdict(list)
-_LOGIN_MAX    = 5      # 5 attempts per window
+_LOGIN_MAX    = 10     # 10 attempts per window (increased for genuine users)
 _LOGIN_WINDOW = 300    # 5 minutes
-_EMAIL_MAX    = 10     # per email across any IP
+_EMAIL_MAX    = 20     # per email across any IP
 _EMAIL_WINDOW = 600    # 10 minutes
 
 async def _check_rate_limit_db(ip: str, email: str) -> None:
