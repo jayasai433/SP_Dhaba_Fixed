@@ -9,7 +9,7 @@ router = APIRouter()
 @router.get("/pnl")
 async def get_pnl(
     period: str = "today", start: Optional[str] = None, end: Optional[str] = None,
-    user=Depends(require_roles("admin", "viewer"))
+    user=Depends(require_roles("admin", "viewer", "staff"))
 ):
     try:
         if start or end:
@@ -20,7 +20,7 @@ async def get_pnl(
         raise HTTPException(status_code=503, detail=f"P&L data temporarily unavailable: {str(ex)[:100]}")
 
 @router.get("/pnl/trend")
-async def pnl_trend(days: int = 30, user=Depends(require_roles("admin", "viewer"))):
+async def pnl_trend(days: int = 30, user=Depends(require_roles("admin", "viewer", "staff"))):
     try:
         return await compute_pnl_trend(days)
     except Exception as ex:

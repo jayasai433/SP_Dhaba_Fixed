@@ -20,7 +20,7 @@ async def get_alerts_route(user=Depends(get_current_user)):
         raise HTTPException(status_code=503, detail=f"Alerts temporarily unavailable: {str(e)[:100]}")
 
 @router.get("/dashboard")
-async def dashboard(user=Depends(require_roles("admin", "viewer"))):
+async def dashboard(user=Depends(require_roles("admin", "viewer", "staff"))):
     try:
         return await aggregate_dashboard_data()
     except Exception as e:
