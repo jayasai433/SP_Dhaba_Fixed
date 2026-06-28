@@ -5,6 +5,8 @@ from core.config import IST
 
 
 async def compute_stock() -> list:
+    from services.consumption import get_consumption_rates as _get_rates
+    consumption_rates = await _get_rates(db)
     """
     Compute current stock per item using the best available source:
 
@@ -88,12 +90,25 @@ async def compute_stock() -> list:
                 qty_left    = round(cs["closing_qty"] + extra_today, 3)
                 qty_out     = round(qty_in - qty_left, 3)
         else:
-            # Legacy fallback: purchases - manual usage
-            qty_out  = used.get(iid, 0)
-            qty_left = round(qty_in - qty_out, 3)
+            # No closing stock — use consumption rate estimate
+            # est_remaining from consumption service is the most accurate
+            consumption = consumption_rates.get(iid)
+            if consumption and consumption.get("est_remaining") is not None:
+                qty_left = round(max(consumption["est_remaining"], 0), 3)
+                qty_out  = round(qty_in - qty_left, 3)
+            else:
+                # Truly no data — show 0 to avoid misleading pile-up
+                qty_out  = qty_in
+                qty_left = 0
 
         reorder = item.get("reorder_level", 0)
-        status  = "out" if qty_left <= 0 else ("low" if qty_left <= reorder else "in")
+        # Use consumption status if available, otherwise derive from qty
+        consumption = consumption_rates.get(iid)
+        if consumption and consumption.get("status") and consumption["status"] != "insufficient_data":
+            c_status = consumption["status"]
+            status = "out" if c_status in ("overdue",) else ("low" if c_status in ("urgent", "soon") else "in")
+        else:
+            status = "out" if qty_left <= 0 else ("low" if qty_left <= reorder else "in")
         stock.append({
             **item,
             "qty_purchased": qty_in,
