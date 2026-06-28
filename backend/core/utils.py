@@ -19,7 +19,8 @@ def today_ist() -> _date:
 
 # ── Staff data isolation ──────────────────────────────────────────────────
 def _can_view_all(user: dict) -> bool:
-    return user["role"] in ("admin", "viewer")
+    # Staff can view all entries — they need full picture to run the dhaba
+    return user["role"] in ("admin", "viewer", "staff")
 
 # ── Login rate limiter ────────────────────────────────────────────────────
 # In-memory fallback — used when MongoDB is unavailable during startup.
