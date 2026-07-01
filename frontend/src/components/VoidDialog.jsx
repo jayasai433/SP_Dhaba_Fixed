@@ -11,10 +11,10 @@ import { Label } from "@/components/ui/label";
  * before allowing the void to proceed.
  *
  * Props:
- *   open       — boolean, controls visibility
- *   onConfirm  — (reason: string) => void, called with trimmed reason text
- *   onCancel   — () => void
- *   entryLabel — optional descriptor shown in the dialog (e.g. "purchase")
+ *   open      . boolean, controls visibility
+ *   onConfirm . (reason: string) => void, called with trimmed reason text
+ *   onCancel  . () => void
+ *   entryLabel. optional descriptor shown in the dialog (e.g. "purchase")
  */
 export default function VoidDialog({ open, onConfirm, onCancel, entryLabel = "entry" }) {
   const [reason, setReason] = useState("");

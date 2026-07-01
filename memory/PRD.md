@@ -15,6 +15,30 @@ Production-ready, mobile-first lightweight ERP for an Indian roadside dhaba with
 - **Staff (Lokesh)**: Purchases, Daily Usage, Sales, Expenses. Sees only own entries
 - **Viewer (Display)**: Read-only Dashboard, P&L, Live Stock, Alerts, Display Mode
 
+
+### Sprint. 01-Jul-2026. Slim-down for domain launch
+**Scope reduction to only Expenses, Sales, Purchases, and Item Master.**
+- Deleted routers/pages: stock, alerts, dashboard, pnl, salaries, wastage, suppliers, closing_stock, inventory_insights, daily_usage, exports (CSV), whatsapp scheduler, display_mode, settings sub-pages, all AI/Groq features (daily digest, smart reorder, anomaly check).
+- Full inventory of removed code archived to `/app/docs/archived-features.md` with restore checklist. Full source retained in git history.
+- Backend unified on `main:app` (deleted 1886-line `server.py` monolith identified as biggest bottleneck in the code review). A one-line `server.py` re-exports `app` so supervisor's `server:app` command continues to work.
+- New Item Master schema: `base_unit` + `units: [{name, conversion_factor, is_default}]` + `default_price`. Migrates the old `unit` string to multi-unit support so eggs can be bought as piece/dozen/tray in the same item.
+- Purchase document now persists `unit`, `unit_conversion_factor`, `base_unit`, `base_quantity` per line so a future stock module can aggregate purely on `base_quantity` without cross-unit gymnastics.
+- Frontend rebuilt around 4 mobile-first pages (Sales default landing, Purchases, Expenses, Items). Bottom nav for mobile with thumb-friendly targets. Sticky KPI totals at top of every page. Empty states with icon + helper text.
+- On-the-fly item creation added: item picker inside the Purchase form has an "Add new item" affordance that opens the full ItemDialog and auto-selects the created item.
+- Awaited login rate limiter (fix from code review): previously the DB check was fire-and-forget, letting all attempts through as long as memory limiter permitted. Now `check_rate_limit()` is a coroutine that must complete before the login proceeds.
+- Non-idempotent POST/PATCH/DELETE requests are no longer retried by axios interceptor. Prevents double-writes on transient network failures.
+- Em dashes purged from all UI text, labels, and docs per content rule.
+- Atlas wipe: both `sp_dhaba` and `sp_dhaba_staging` databases dropped via `db.drop_database()` prior to redeploy. Seed script recreates users/items/categories on first backend boot against the fresh DB.
+- Trimmed backend `requirements.txt` from 127 packages to 26 core deps (dropped reportlab, APScheduler, google-*, boto3, openai, stripe, pandas, numpy, and other unused deps).
+
+## Stack (current)
+- **Frontend**: React 19, Tailwind, shadcn/ui, sonner, react-router 7
+- **Backend**: FastAPI + Motor + Pydantic v2 (no scheduler, no PDF gen, no LLM deps)
+- **DB**: MongoDB Atlas. Collections: users, items, purchases, sales, expenses, categories, expense_categories, business_profile, login_attempts
+- **Auth**: JWT Bearer (8h expiry, bcrypt)
+- **Locale**: INR (₹), DD-MMM-YYYY, IST (Asia/Kolkata)
+
+
 ## Implementation Log
 ### Sprint — 12-Feb-2026 (UX review batches 1-3)
 **Batch 1 — Fix what's broken:**

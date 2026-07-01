@@ -7,7 +7,7 @@ from core.security import (
     get_current_user, require_roles,
     hash_password, verify_password, create_token,
 )
-from core.utils import now_utc, iso, _check_rate_limit
+from core.utils import now_utc, iso, check_rate_limit
 from core.config import TOKEN_TTL_HOURS
 from models.user import UserOut, LoginIn, UserCreateIn, UserUpdateIn, PasswordResetIn
 
@@ -19,7 +19,7 @@ COOKIE_MAX_AGE = TOKEN_TTL_HOURS * 3600
 # ── Auth ──────────────────────────────────────────────────────────────────
 @router.post("/auth/login")
 async def login(payload: LoginIn, response: Response, request: Request):
-    _check_rate_limit(
+    await check_rate_limit(
         request.client.host if request.client else "unknown",
         payload.email  # dual rate limiting by IP + email
     )
@@ -67,13 +67,14 @@ async def create_user(payload: UserCreateIn, user=Depends(require_roles("admin")
         "role": payload.role, "is_active": True, "created_at": iso(now_utc()),
     }
     await db.users.insert_one(doc)
-    doc.pop("password_hash"); doc.pop("_id", None)
+    doc.pop("password_hash")
+    doc.pop("_id", None)
     return doc
 
 @router.patch("/users/{user_id}", response_model=UserOut)
 async def update_user(user_id: str, payload: UserUpdateIn,
                       user=Depends(require_roles("admin"))):
-    # Explicitly whitelist updatable fields — prevent mass assignment
+    # Explicitly whitelist updatable fields. prevent mass assignment
     allowed = {"name": payload.name, "role": payload.role, "is_active": payload.is_active}
     update  = {k: v for k, v in allowed.items() if v is not None}
     if update:

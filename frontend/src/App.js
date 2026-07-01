@@ -1,6 +1,5 @@
-import React, { lazy, Suspense } from "react";
+import React, { lazy, Suspense, useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { useEffect } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { BusinessProfileProvider, useBusinessProfile } from "@/contexts/BusinessProfileContext";
@@ -9,33 +8,18 @@ import ErrorBoundary from "@/components/ErrorBoundary";
 import Layout from "@/components/Layout";
 import Login from "@/pages/Login";
 import Forbidden from "@/pages/Forbidden";
-const Dashboard = lazy(() => import("@/pages/Dashboard"));
-const LiveStock = lazy(() => import("@/pages/LiveStock"));
-const Alerts = lazy(() => import("@/pages/Alerts"));
+
+const Sales     = lazy(() => import("@/pages/Sales"));
 const Purchases = lazy(() => import("@/pages/Purchases"));
-const Sales = lazy(() => import("@/pages/Sales"));
-const Items = lazy(() => import("@/pages/Items"));
-const Settings = lazy(() => import("@/pages/Settings"));
-const DisplayMode = lazy(() => import("@/pages/DisplayMode"));
-const ClosingStock = lazy(() => import("@/pages/ClosingStock"));
-const InventoryInsights = lazy(() => import("@/pages/InventoryInsights"));
-const Expenses = lazy(() => import("@/pages/Expenses"));
-const Salaries = lazy(() => import("@/pages/Salaries"));
-const PnL = lazy(() => import("@/pages/PnL"));
-const Wastage = lazy(() => import("@/pages/Wastage"));
+const Expenses  = lazy(() => import("@/pages/Expenses"));
+const Items     = lazy(() => import("@/pages/Items"));
+
 import "@/App.css";
 
-/**
- * DynamicTitle — updates browser tab title from business profile.
- * Replaces hardcoded "SP Royal Punjabi Dhaba" in index.html.
- * Falls back gracefully if profile not yet loaded.
- */
 function DynamicTitle() {
   const { profile } = useBusinessProfile();
   useEffect(() => {
-    if (profile?.name) {
-      document.title = `${profile.name} — Operations Manager`;
-    }
+    if (profile?.name) document.title = `${profile.name}. Ops`;
   }, [profile?.name]);
   return null;
 }
@@ -44,9 +28,15 @@ function RootRedirect() {
   const { user, loading } = useAuth();
   if (loading) return null;
   if (!user) return <Navigate to="/login" replace />;
-  if (user.role === "viewer") return <Navigate to="/display" replace />;
-  if (user.role === "staff") return <Navigate to="/stock" replace />;
-  return <Navigate to="/dashboard" replace />;
+  return <Navigate to="/sales" replace />;
+}
+
+function Spinner() {
+  return (
+    <div className="flex items-center justify-center min-h-screen">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-600" />
+    </div>
+  );
 }
 
 export default function App() {
@@ -57,63 +47,41 @@ export default function App() {
           <DynamicTitle />
           <BrowserRouter>
             <Toaster richColors position="top-right" />
-          <Suspense fallback={<div className="flex items-center justify-center min-h-screen"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-600" /></div>}>
-      <Routes>
-          <Route path="/login" element={<ErrorBoundary><Login /></ErrorBoundary>} />
-          <Route path="/forbidden" element={<ErrorBoundary><Forbidden /></ErrorBoundary>} />
-          <Route path="/" element={<ErrorBoundary><RootRedirect /></ErrorBoundary>} />
+            <Suspense fallback={<Spinner />}>
+              <Routes>
+                <Route path="/login" element={<ErrorBoundary><Login /></ErrorBoundary>} />
+                <Route path="/forbidden" element={<ErrorBoundary><Forbidden /></ErrorBoundary>} />
+                <Route path="/" element={<ErrorBoundary><RootRedirect /></ErrorBoundary>} />
 
-          <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
-            <Route path="/dashboard" element={
-              <ProtectedRoute roles={["admin", "viewer", "staff"]}><ErrorBoundary><Dashboard /></ErrorBoundary></ProtectedRoute>
-            } />
-            <Route path="/stock" element={<ErrorBoundary><LiveStock /></ErrorBoundary>} />
-            {/* Alerts route hidden until v2.0 — chef communicates stock needs manually */}
-            {/* <Route path="/alerts" element={<ErrorBoundary><Alerts /></ErrorBoundary>} /> */}
-            <Route path="/purchases" element={
-              <ProtectedRoute roles={["admin", "staff"]}><ErrorBoundary><Purchases /></ErrorBoundary></ProtectedRoute>
-            } />
-            <Route path="/usage" element={<Navigate to="/closing-stock" replace />} />
-            <Route path="/sales" element={
-              <ProtectedRoute roles={["admin", "staff"]}><ErrorBoundary><Sales /></ErrorBoundary></ProtectedRoute>
-            } />
-            <Route path="/items" element={
-              <ProtectedRoute roles={["admin"]}><ErrorBoundary><Items /></ErrorBoundary></ProtectedRoute>
-            } />
-            <Route path="/expenses" element={
-              <ProtectedRoute roles={["admin", "staff"]}><ErrorBoundary><Expenses /></ErrorBoundary></ProtectedRoute>
-            } />
-            <Route path="/salaries" element={
-              <ProtectedRoute roles={["admin"]}><ErrorBoundary><Salaries /></ErrorBoundary></ProtectedRoute>
-            } />
-            <Route path="/pnl" element={
-              <ProtectedRoute roles={["admin", "viewer"]}><ErrorBoundary><PnL /></ErrorBoundary></ProtectedRoute>
-            } />
-            {/* Wastage hidden — v2.0
-            <Route path="/wastage" element={
-              <ProtectedRoute roles={["admin", "staff", "viewer"]}><ErrorBoundary><Wastage /></ErrorBoundary></ProtectedRoute>
-            } /> */}
-            <Route path="/settings" element={
-              <ProtectedRoute roles={["admin"]}><ErrorBoundary><Settings /></ErrorBoundary></ProtectedRoute>
-            } />
-            <Route path="/display" element={
-              <ProtectedRoute roles={["admin", "viewer", "staff"]}><ErrorBoundary><DisplayMode /></ErrorBoundary></ProtectedRoute>
-            } />
-            {/* Closing stock hidden — v2.0
-            <Route path="/closing-stock" element={
-              <ProtectedRoute roles={["admin", "staff", "viewer"]}><ErrorBoundary><ClosingStock /></ErrorBoundary></ProtectedRoute>
-            } />
-            <Route path="/inventory-insights" element={
-              <ProtectedRoute roles={["admin", "viewer"]}><ErrorBoundary><InventoryInsights /></ErrorBoundary></ProtectedRoute>
-            } /> */}
-          </Route>
+                <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
+                  <Route path="/sales" element={
+                    <ProtectedRoute roles={["admin", "staff", "viewer"]}>
+                      <ErrorBoundary><Sales /></ErrorBoundary>
+                    </ProtectedRoute>
+                  } />
+                  <Route path="/purchases" element={
+                    <ProtectedRoute roles={["admin", "staff", "viewer"]}>
+                      <ErrorBoundary><Purchases /></ErrorBoundary>
+                    </ProtectedRoute>
+                  } />
+                  <Route path="/expenses" element={
+                    <ProtectedRoute roles={["admin", "staff", "viewer"]}>
+                      <ErrorBoundary><Expenses /></ErrorBoundary>
+                    </ProtectedRoute>
+                  } />
+                  <Route path="/items" element={
+                    <ProtectedRoute roles={["admin", "staff"]}>
+                      <ErrorBoundary><Items /></ErrorBoundary>
+                    </ProtectedRoute>
+                  } />
+                </Route>
 
-          <Route path="*" element={<ErrorBoundary><Navigate to="/" replace /></ErrorBoundary>} />
-          </Routes>
-      </Suspense>
-        </BrowserRouter>
-      </BusinessProfileProvider>
-    </AuthProvider>
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </Suspense>
+          </BrowserRouter>
+        </BusinessProfileProvider>
+      </AuthProvider>
     </ErrorBoundary>
   );
 }

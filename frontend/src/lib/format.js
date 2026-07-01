@@ -9,7 +9,7 @@ export function inr(n) {
 
 // Format YYYY-MM-DD -> DD-MMM-YYYY
 export function fmtDate(s) {
-  if (!s) return "—";
+  if (!s) return ".";
   const [y, m, d] = s.split("T")[0].split("-");
   if (!y || !m || !d) return s;
   return `${d}-${MONTHS[parseInt(m, 10) - 1]}-${y}`;
@@ -17,7 +17,7 @@ export function fmtDate(s) {
 
 // Format ISO timestamp → "31-May-2026 14:32 IST"
 export function fmtTimestamp(iso) {
-  if (!iso) return "—";
+  if (!iso) return ".";
   const d = new Date(iso);
   const fmt = new Intl.DateTimeFormat("en-IN", {
     timeZone: "Asia/Kolkata",

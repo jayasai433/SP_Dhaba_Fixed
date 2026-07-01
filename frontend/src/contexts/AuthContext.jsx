@@ -72,10 +72,10 @@ export function AuthProvider({ children }) {
     const token = getToken();
     if (token) {
       try {
-        // Decode JWT payload (no verification — just for iat claim)
+        // Decode JWT payload (no verification. just for iat claim)
         const payload = JSON.parse(atob(token.split(".")[1]));
         if (payload.iat) _scheduleExpiryWarning(payload.iat * 1000);
-      } catch { /* malformed token — let the /auth/me call handle it */ }
+      } catch { /* malformed token. let the /auth/me call handle it */ }
     }
     return _clearExpiryTimers;
   // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -1,35 +1,22 @@
 import os
 from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from core.config import CORS_ORIGINS
 from core.db import client
 from services.seed import seed
-from services.whatsapp import start_scheduler, stop_scheduler
 
-from routers.auth          import router as auth_router
-from routers.items         import router as items_router
-from routers.purchases     import router as purchases_router
-from routers.usage         import router as usage_router
-from routers.sales         import router as sales_router
-from routers.expenses      import router as expenses_router
-from routers.stock         import router as stock_router
-from routers.pnl           import router as pnl_router
-from routers.salaries      import router as salaries_router
-from routers.whatsapp      import router as whatsapp_router
-from routers.closing_stock      import router as closing_stock_router
-from routers.inventory_insights import router as inventory_insights_router
-from routers.wastage            import router as wastage_router
-from routers.exports            import router as exports_router
-from routers.insights           import router as insights_router
+from routers.auth      import router as auth_router
+from routers.items     import router as items_router
+from routers.purchases import router as purchases_router
+from routers.sales     import router as sales_router
+from routers.expenses  import router as expenses_router
 
-# ── App ───────────────────────────────────────────────────────────────────
-app = FastAPI(title="SP Royal Punjabi Dhaba — Operations Manager")
+app = FastAPI(title="SP Royal Punjabi Dhaba. Operations Manager")
 
-# ── Security Headers ──────────────────────────────────────────────────────
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.middleware.trustedhost import TrustedHostMiddleware
-from starlette.requests import Request
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
@@ -42,109 +29,64 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
         return response
 
-app.add_middleware(SecurityHeadersMiddleware)
 
-# Trust Railway's proxy — prevents X-Forwarded-For spoofing
-# Railway acts as trusted proxy, so client IP is correct
-from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
 
-# ── CORS ──────────────────────────────────────────────────────────────────
-# CORS: credentials require specific origins (not "*")
-_cors_origins = CORS_ORIGINS if CORS_ORIGINS != ["*"] else ["*"]
-_allow_creds  = CORS_ORIGINS != ["*"]  # credentials only work with specific origins
-
+# CORS. Set CORS_ORIGINS on Railway to a comma-separated list containing your
+# custom domain, e.g. "https://ops.yourdomain.com,https://your-app.up.railway.app"
+# to unlock credentialed requests. Falls back to a permissive default for local
+# development, in which case cookies are disabled (browsers reject credentials
+# combined with wildcard origin).
+_origins = [o.strip() for o in CORS_ORIGINS if o.strip()]
+_allow_creds = _origins != ["*"]
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=_allow_creds,
-    allow_origins=_cors_origins,
+    allow_origins=_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ── Routers ───────────────────────────────────────────────────────────────
 PREFIX = "/api"
-for router in [
-    auth_router, items_router, purchases_router, usage_router,
-    sales_router, expenses_router, stock_router, pnl_router,
-    salaries_router, whatsapp_router, closing_stock_router, inventory_insights_router,
-    wastage_router, exports_router, insights_router,
-]:
-    app.include_router(router, prefix=PREFIX)
+for r in (auth_router, items_router, purchases_router, sales_router, expenses_router):
+    app.include_router(r, prefix=PREFIX)
 
-# ── Lifecycle ─────────────────────────────────────────────────────────────
+
 @app.on_event("startup")
-async def startup():
-    import logging, asyncio
+async def _startup():
+    import logging
+    import asyncio
     logger = logging.getLogger("startup")
-    # Retry seed up to 3 times with backoff — handles transient Atlas connection issues
     for attempt in range(1, 4):
         try:
             logger.info(f"Seeding database (attempt {attempt}/3)...")
             await seed()
-            logger.info("Database seeded successfully.")
+            logger.info("Database seed OK.")
             break
         except Exception as e:
             logger.error(f"Seed attempt {attempt} failed: {e}")
             if attempt < 3:
-                await asyncio.sleep(5 * attempt)  # 5s, 10s backoff
-            else:
-                logger.error("All seed attempts failed. App will start but may have missing data.")
-    # ── Ensure all critical indexes ───────────────────────────────────────────
-    try:
-        from core.db import db as _db
-        # Consumption rate queries
-        await _db.purchases.create_index([("item_id", 1), ("date", -1)],      background=True)
-        await _db.purchases.create_index([("is_void", 1), ("item_id", 1)],    background=True)
-        await _db.expenses.create_index([("category", 1), ("created_at", -1)],background=True)
-        await _db.items.create_index([("is_active", 1)],                       background=True)
-        # Date range queries — purchases, sales, expenses pages
-        await _db.purchases.create_index([("date", -1)],                       background=True)
-        await _db.purchases.create_index([("created_at", -1)],                 background=True)
-        await _db.expenses.create_index([("date", -1)],                        background=True)
-        await _db.sales.create_index([("date", -1)],                           background=True)
-        # Auth — called on every single API request
-        await _db.users.create_index([("email", 1)],   unique=True,            background=True)
-        await _db.users.create_index([("id", 1)],      unique=True,            background=True)
-        # Item lookups
-        await _db.items.create_index([("name", 1)],                            background=True)
-        await _db.items.create_index([("id", 1)],      unique=True,            background=True)
-        # Anomaly check — sort by created_at
-        await _db.anomaly_flags.create_index([("created_at", -1)],            background=True)
-        logger.info("All critical indexes ensured.")
-    except Exception as e:
-        logger.warning(f"Index creation failed (non-critical): {e}")
+                await asyncio.sleep(5 * attempt)
 
-    if os.environ.get("ENABLE_SCHEDULER", "true").lower() == "true":
-        start_scheduler()
 
 @app.on_event("shutdown")
-async def shutdown():
-    stop_scheduler()
+async def _shutdown():
     client.close()
 
-# ── Health check ──────────────────────────────────────────────────────────
+
 @app.get("/api/")
 async def root():
-    return {"status": "ok", "app": "SP Royal Punjabi Dhaba — Operations Manager"}
+    return {"status": "ok", "app": "SP Royal Punjabi Dhaba. Operations Manager"}
+
 
 @app.get("/api/health")
 async def health():
-    """
-    Deep health check — verifies DB connectivity.
-    Also returns environment and DB name so the frontend
-    can confirm it is talking to the correct backend.
-    """
     from core.config import ENVIRONMENT, DB_NAME
     try:
-        from core.db import client
         await client.admin.command("ping")
-        return {
-            "status":      "ok",
-            "db":          "connected",
-            "db_name":     DB_NAME,
-            "environment": ENVIRONMENT,
-        }
+        return {"status": "ok", "db": "connected",
+                "db_name": DB_NAME, "environment": ENVIRONMENT}
     except Exception as e:
         from fastapi import HTTPException
         raise HTTPException(status_code=503, detail=f"DB unavailable: {str(e)[:100]}")
