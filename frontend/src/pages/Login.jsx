@@ -54,10 +54,18 @@ export default function Login() {
 
   return (
     <div className="min-h-screen w-full flex flex-col md:flex-row bg-[#FFF8F0]" data-testid="login-page">
-      <div className="hidden md:flex flex-1 relative bg-gradient-to-br from-[#3d1c07] via-[#7a3612] to-[#d8580c]">
-        <div className="absolute inset-0 flex flex-col justify-end p-12 text-white">
-          <h1 className="font-display text-5xl font-bold leading-tight max-w-md">{bizName}</h1>
-          <p className="mt-3 text-orange-100/80 max-w-md">
+      <div className="hidden md:flex flex-1 relative overflow-hidden">
+        <img
+          src="https://images.unsplash.com/photo-1682862279256-b2a9e4f3d22c?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NzV8MHwxfHNlYXJjaHwxfHx0YW5kb29yaSUyMGZvb2R8ZW58MHx8fHwxNzgyOTIyOTM3fDA&ixlib=rb-4.1.0&q=85&w=1600"
+          alt=""
+          loading="eager"
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+        {/* Warm gradient overlay to keep text readable and match brand palette */}
+        <div className="absolute inset-0 bg-gradient-to-br from-[#3d1c07]/85 via-[#7a3612]/60 to-[#d8580c]/70" />
+        <div className="relative flex flex-col justify-end p-12 text-white">
+          <h1 className="font-display text-5xl font-bold leading-tight max-w-md drop-shadow-lg">{bizName}</h1>
+          <p className="mt-3 text-orange-100/90 max-w-md drop-shadow">
             Track sales, purchases, and expenses in one clean, mobile-first workspace.
           </p>
         </div>
